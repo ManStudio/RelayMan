@@ -1,0 +1,21 @@
+[package]
+name = "relay"
+version = "0.0.9"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["client", "server"]
+server = []
+client = []
+
+[[example]]
+name = "server"
+
+[[example]]
+name = "client"
+
+[dependencies]
+bytes-kman = "0.1.7"
+rand = "0.8.5"
+socket2 = "0.4.7"
