@@ -21,28 +21,22 @@ fn main() {
     println!("Create connection");
 
     client.step();
-    client.search_request(Search {
+    let search = client.search(Search {
         session: 0,
         client: SearchType::None,
         name: SearchType::None,
         other: SearchType::None,
     });
 
-    client.step();
-    std::thread::sleep(Duration::from_millis(200));
-    client.step();
+    let search = search.get();
 
-    let search = client.search();
     println!("Search: {:?}", search);
 
     for adress in search {
         let mut where_is = client.where_is_adress(&adress);
         let Some(where_is) = where_is.pop() else{continue};
-
-        client.get_info_request(where_is, &adress);
-        std::thread::sleep(Duration::from_millis(200));
-        client.step();
-        let client_info = client.get_info(where_is, &adress);
+        let info = client.get(where_is).unwrap().info(&adress);
+        let client_info = info.get();
         if let Some(info) = client_info {
             println!("Client: {:?}", info);
         }

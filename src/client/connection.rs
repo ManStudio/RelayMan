@@ -1,6 +1,7 @@
 use std::{
     mem::MaybeUninit,
     net::ToSocketAddrs,
+    sync::{Arc, LockResult, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::{Duration, SystemTime},
 };
 
@@ -9,8 +10,10 @@ use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
 use crate::common::{
     adress::Adress,
-    packets::{InfoRequest, NewRequest, Packets, Register, Request, RequestFinal, RequestResponse},
+    packets::{InfoRequest, Packets, Register, Request, RequestFinal, RequestResponse, Search},
 };
+
+use super::response::{self, NewRequestFinal, RequestStage, Response};
 
 #[derive(Debug)]
 pub enum ConnectionError {
@@ -99,10 +102,11 @@ impl Connection {
 
     pub fn step(&mut self) {
         if let Some(packet) = self.recv() {
-            match packet {
-                Packets::SearchResponse(pak) => self.adresses = pak.adresses,
-                _ => self.packets.push(packet),
-            }
+            match &packet {
+                Packets::SearchResponse(pak) => self.adresses = pak.adresses.clone(),
+                _ => {}
+            };
+            self.packets.push(packet)
         }
 
         if self.last_packet.elapsed().unwrap() < Duration::from_secs(2) {
@@ -150,138 +154,346 @@ impl Connection {
         }
         None
     }
+}
 
-    pub fn get_info_request(&mut self, adress: &Adress) {
+pub trait TConnection {
+    fn step(&self);
+
+    fn read(&self) -> LockResult<RwLockReadGuard<Connection>>;
+    fn write(&self) -> LockResult<RwLockWriteGuard<Connection>>;
+
+    fn search(&self, search: Search) -> Response<Box<dyn TConnection>, response::SearchResponse>;
+    fn info(&self, adress: &Adress) -> Response<Box<dyn TConnection>, Option<ConnectionInfo>>;
+
+    fn request(
+        &self,
+        adress: &Adress,
+        secret: String,
+    ) -> Response<Box<dyn TConnection>, response::NewRequestResponse>;
+    fn request_response(
+        &self,
+        adress: &Adress,
+        accept: bool,
+    ) -> Response<Box<dyn TConnection>, response::NewRequestFinal>;
+    fn request_final(&self, adress: &Adress, accept: bool);
+
+    fn has_new(&self) -> Option<RequestStage>;
+    fn c(&self) -> Box<dyn TConnection>;
+}
+
+impl TConnection for Arc<RwLock<Connection>> {
+    fn step(&self) {
+        self.write().unwrap().step();
+    }
+
+    fn read(&self) -> LockResult<RwLockReadGuard<Connection>> {
+        RwLock::read(self)
+    }
+
+    fn write(&self) -> LockResult<RwLockWriteGuard<Connection>> {
+        RwLock::write(self)
+    }
+
+    fn search(&self, search: Search) -> Response<Box<dyn TConnection>, response::SearchResponse> {
+        let pak = Packets::Search(search);
+        self.write().unwrap().send(pak.clone());
+
+        Response {
+            connection: Box::new(self.clone()),
+            packets: pak,
+            fn_has: search_fn_has,
+            fn_get: search_fn_get,
+        }
+    }
+
+    fn info(&self, adress: &Adress) -> Response<Box<dyn TConnection>, Option<ConnectionInfo>> {
         let pak = Packets::InfoRequest(InfoRequest {
             adress: adress.clone(),
             session: 0,
         });
+        self.write().unwrap().send(pak.clone());
 
-        self.send(pak);
+        Response {
+            connection: Box::new(self.clone()),
+            packets: pak,
+            fn_has: info_fn_has,
+            fn_get: info_fn_get,
+        }
     }
 
-    pub fn get_info(&mut self, adress: &Adress) -> Option<ConnectionInfo> {
-        let mut res = None;
-        self.packets.retain(|packet| match packet {
-            Packets::Info(pak) => {
-                println!("Pack: {:?}", pak);
-                if pak.adress == *adress {
-                    if pak.has {
-                        res = Some(ConnectionInfo {
-                            client: pak.client.clone(),
-                            name: pak.name.clone(),
-                            public: pak.adress.clone(),
-                            other: pak.other.clone(),
-                            privacy: false,
-                        });
-                    }
-                    false
-                } else {
-                    true
-                }
-            }
-            _ => true,
-        });
-
-        None
-    }
-
-    pub fn request(&mut self, adress: &Adress, secret: impl Into<String>) {
+    fn request(
+        &self,
+        adress: &Adress,
+        secret: String,
+    ) -> Response<Box<dyn TConnection>, response::NewRequestResponse> {
         let pak = Packets::Request(Request {
             session: 0,
             to: adress.clone(),
-            secret: secret.into(),
+            secret,
         });
+        self.write().unwrap().send(pak.clone());
 
-        self.send(pak);
-        self.step();
+        Response {
+            connection: Box::new(self.clone()),
+            packets: pak,
+            fn_has: request_fn_has,
+            fn_get: request_fn_get,
+        }
     }
 
-    pub fn request_response(&mut self, adress: &Adress, secret: Option<impl Into<String>>) {
-        let accepted = secret.is_some();
-        let secret = if let Some(secret) = secret {
-            secret.into()
-        } else {
-            String::new()
-        };
-
+    fn request_response(
+        &self,
+        adress: &Adress,
+        accept: bool,
+    ) -> Response<Box<dyn TConnection>, NewRequestFinal> {
         let pak = Packets::RequestResponse(RequestResponse {
             session: 0,
             to: adress.clone(),
-            accepted,
-            secret,
+            accepted: accept,
+            secret: String::new(),
         });
+        self.write().unwrap().send(pak.clone());
 
-        self.send(pak);
-        self.step();
+        Response {
+            connection: Box::new(self.clone()),
+            packets: pak,
+            fn_has: request_response_fn_has,
+            fn_get: request_response_fn_get,
+        }
     }
 
-    pub fn request_final(&mut self, adress: &Adress, accepted: bool) {
+    fn request_final(&self, adress: &Adress, accept: bool) {
         let pak = Packets::RequestFinal(RequestFinal {
             session: 0,
-            adress: adress.clone(),
-            accepted,
+            to: adress.clone(),
+            accepted: accept,
         });
-        self.send(pak);
-        self.step();
+        self.write().unwrap().send(pak.clone());
     }
 
-    pub fn has_new_request(&mut self) -> Option<NewRequest> {
-        let mut has = None;
+    fn has_new(&self) -> Option<RequestStage> {
+        let mut res = None;
 
-        self.step();
-        self.packets.retain(|packet| match packet {
-            Packets::NewRequest(pak) => {
-                if has.is_none() {
-                    has = Some(pak.clone());
-                    false
-                } else {
-                    true
+        self.write().unwrap().packets.retain(|pak| {
+            if res.is_none() {
+                match pak {
+                    Packets::NewRequest(pak) => {
+                        res = Some(RequestStage::NewRequest(response::NewRequest {
+                            connection: Box::new(self.clone()),
+                            from: pak.from.clone(),
+                            secret: pak.secret.clone(),
+                        }));
+                        false
+                    }
+                    Packets::NewRequestResponse(pak) => {
+                        res = Some(RequestStage::NewRequestResponse(
+                            response::NewRequestResponse {
+                                connection: Box::new(self.clone()),
+                                from: pak.from.clone(),
+                                accept: pak.accepted,
+                                secret: pak.secret.clone(),
+                            },
+                        ));
+                        false
+                    }
+                    Packets::NewRequestFinal(pak) => {
+                        res = Some(RequestStage::NewRequestFinal(response::NewRequestFinal {
+                            connection: Box::new(self.clone()),
+                            from: pak.from.clone(),
+                            accept: pak.accepted,
+                        }));
+                        false
+                    }
+                    _ => true,
                 }
+            } else {
+                true
             }
-            _ => true,
         });
 
-        has
+        res
     }
 
-    pub fn has_request_response(&mut self) -> Option<RequestResponse> {
-        let mut has = None;
+    fn c(&self) -> Box<dyn TConnection> {
+        Box::new(self.clone())
+    }
+}
 
-        self.step();
+// Search
 
-        self.packets.retain(|packet| match packet {
-            Packets::RequestResponse(pak) => {
-                if has.is_none() {
-                    has = Some(pak.clone());
-                    false
-                } else {
-                    true
+fn search_fn_has(conn: &Box<dyn TConnection>, _: &Packets) -> bool {
+    conn.step();
+    for pak in conn.read().unwrap().packets.iter() {
+        if let Packets::SearchResponse(_) = pak {
+            return true;
+        }
+    }
+    false
+}
+
+fn search_fn_get(conn: Box<dyn TConnection>, _: Packets) -> response::SearchResponse {
+    let mut res = None;
+
+    conn.write().unwrap().packets.retain(|pak| {
+        if let Packets::SearchResponse(pak) = pak {
+            if res.is_none() {
+                res = Some(response::SearchResponse {
+                    adresses: pak.adresses.clone(),
+                });
+                return false;
+            }
+        }
+        true
+    });
+
+    if let Some(res) = res {
+        res
+    } else {
+        panic!()
+    }
+}
+
+// End Search
+//
+// Info
+
+fn info_fn_has(conn: &Box<dyn TConnection>, packet: &Packets) -> bool {
+    conn.step();
+    if let Packets::InfoRequest(packet) = packet {
+        for pak in conn.read().unwrap().packets.iter() {
+            if let Packets::Info(pak) = pak {
+                if pak.adress == packet.adress {
+                    return true;
                 }
             }
-            _ => true,
-        });
+        }
+    }
+    false
+}
 
-        has
+fn info_fn_get(conn: Box<dyn TConnection>, packet: Packets) -> Option<ConnectionInfo> {
+    let mut res = None;
+    if let Packets::InfoRequest(packet) = packet {
+        conn.write().unwrap().packets.retain(|pak| {
+            if let Packets::Info(pak) = pak {
+                if pak.adress == packet.adress {
+                    if res.is_none() {
+                        if pak.has {
+                            res = Some(Some(ConnectionInfo {
+                                client: pak.client.clone(),
+                                name: pak.client.clone(),
+                                public: packet.adress.clone(),
+                                other: pak.other.clone(),
+                                privacy: false,
+                            }));
+                        } else {
+                            res = Some(None)
+                        }
+                        return false;
+                    }
+                }
+            }
+            true
+        })
     }
 
-    pub fn has_request_final(&mut self) -> Option<RequestFinal> {
-        let mut has = None;
+    if let Some(res) = res {
+        res
+    } else {
+        panic!()
+    }
+}
 
-        self.step();
+// End Info
+//
+// Request
 
-        self.packets.retain(|packet| match packet {
-            Packets::RequestFinal(pak) => {
-                if has.is_none() {
-                    has = Some(pak.clone());
-                    false
-                } else {
-                    true
+fn request_fn_has(conn: &Box<dyn TConnection>, packet: &Packets) -> bool {
+    conn.step();
+    if let Packets::Request(packet) = packet {
+        for pak in conn.read().unwrap().packets.iter() {
+            if let Packets::NewRequestResponse(pak) = pak {
+                if pak.from == packet.to {
+                    return true;
                 }
             }
-            _ => true,
-        });
+        }
+    }
+    false
+}
 
-        has
+fn request_fn_get(conn: Box<dyn TConnection>, packet: Packets) -> response::NewRequestResponse {
+    let mut res = None;
+    if let Packets::Request(packet) = packet {
+        conn.write().unwrap().packets.retain(|pak| {
+            if let Packets::NewRequestResponse(pak) = pak {
+                if pak.from == packet.to {
+                    if res.is_none() {
+                        res = Some(response::NewRequestResponse {
+                            connection: conn.c(),
+                            from: pak.from.clone(),
+                            accept: pak.accepted,
+                            secret: pak.secret.clone(),
+                        });
+                        return false;
+                    }
+                }
+            }
+            true
+        })
+    }
+
+    if let Some(res) = res {
+        res
+    } else {
+        panic!()
+    }
+}
+
+// End Request
+//
+// RequestResponse
+
+fn request_response_fn_has(conn: &Box<dyn TConnection>, packet: &Packets) -> bool {
+    conn.step();
+    if let Packets::Request(packet) = packet {
+        for pak in conn.read().unwrap().packets.iter() {
+            if let Packets::NewRequestFinal(pak) = pak {
+                if pak.from == packet.to {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn request_response_fn_get(
+    conn: Box<dyn TConnection>,
+    packet: Packets,
+) -> response::NewRequestFinal {
+    let mut res = None;
+    if let Packets::Request(packet) = packet {
+        conn.write().unwrap().packets.retain(|pak| {
+            if let Packets::NewRequestFinal(pak) = pak {
+                if pak.from == packet.to {
+                    if res.is_none() {
+                        res = Some(response::NewRequestFinal {
+                            connection: conn.c(),
+                            from: pak.from.clone(),
+                            accept: pak.accepted,
+                        });
+                        return false;
+                    }
+                }
+            }
+            true
+        })
+    }
+
+    if let Some(res) = res {
+        res
+    } else {
+        panic!()
     }
 }

@@ -1,13 +1,18 @@
+use std::sync::{Arc, RwLock};
+
 use crate::common::{
     adress::Adress,
-    packets::{NewRequest, Packets, RequestFinal, RequestResponse, Search},
+    packets::{Packets, Search},
 };
 
 mod connection;
+pub mod response;
 pub use connection::*;
 
+use self::response::{RequestStage, Response};
+
 pub struct RelayClient {
-    pub connections: Vec<Connection>,
+    pub connections: Vec<Arc<RwLock<Connection>>>,
     pub info: ConnectionInfo,
 }
 
@@ -29,7 +34,7 @@ impl RelayClient {
         for relay in relays {
             match Connection::new(relay, info.clone()) {
                 Ok(conn) => {
-                    connections.push(conn);
+                    connections.push(Arc::new(RwLock::new(conn)));
                 }
                 Err(error) => {
                     return Err(ConnectionError(error));
@@ -50,116 +55,81 @@ impl RelayClient {
         }
     }
 
-    pub fn search_request(&mut self, search: Search) {
-        for conn in self.connections.iter_mut() {
-            conn.adresses.clear();
-            conn.send(Packets::Search(search.clone()));
-        }
-    }
-
-    pub fn search(&mut self) -> Vec<Adress> {
-        let mut adresses = Vec::new();
-
-        for conn in self.connections.iter_mut() {
-            for adress in conn.adresses.iter() {
-                if !adresses.contains(adress) {
-                    adresses.push(adress.clone())
-                }
-            }
-        }
-
-        adresses
-    }
-
     pub fn where_is_adress(&self, adress: &Adress) -> Vec<usize> {
         let mut indexs = Vec::new();
         for (index, conn) in self.connections.iter().enumerate() {
-            if conn.adresses.contains(adress) {
+            if conn.read().unwrap().adresses.contains(adress) {
                 indexs.push(index);
             }
         }
         indexs
     }
 
-    pub fn get_info_request(&mut self, conn_index: usize, adress: &Adress) {
-        if let Some(conn) = self.connections.get_mut(conn_index) {
-            return conn.get_info_request(adress);
+    pub fn search(
+        &self,
+        search: Search,
+    ) -> Response<Vec<Response<Box<dyn TConnection>, response::SearchResponse>>, Vec<Adress>> {
+        let mut responses = Vec::new();
+        for conn in self.connections.iter() {
+            responses.push(conn.search(search.clone()))
+        }
+
+        Response {
+            connection: responses,
+            packets: Packets::Search(search),
+            fn_has: search_fn_has,
+            fn_get: search_fn_get,
         }
     }
 
-    pub fn get_info(&mut self, conn_index: usize, adress: &Adress) -> Option<ConnectionInfo> {
-        if let Some(conn) = self.connections.get_mut(conn_index) {
-            return conn.get_info(adress);
-        }
-        None
-    }
-
-    pub fn request(
-        &mut self,
-        conn_index: usize,
-        adress: &Adress,
-        secret: impl Into<String>,
-    ) -> Option<()> {
-        if let Some(conn) = self.connections.get_mut(conn_index) {
-            conn.request(adress, secret);
-            return Some(());
-        }
-
-        None
-    }
-
-    pub fn request_response(
-        &mut self,
-        conn_index: usize,
-        adress: &Adress,
-        secret: Option<impl Into<String>>,
-    ) -> Option<()> {
-        if let Some(conn) = self.connections.get_mut(conn_index) {
-            conn.request_response(adress, secret);
-            return Some(());
-        }
-
-        None
-    }
-
-    pub fn request_final(
-        &mut self,
-        conn_index: usize,
-        adress: &Adress,
-        accept: bool,
-    ) -> Option<()> {
-        if let Some(conn) = self.connections.get_mut(conn_index) {
-            conn.request_final(adress, accept);
-            return Some(());
-        }
-
-        None
-    }
-
-    pub fn has_new_request(&mut self) -> Option<(usize, NewRequest)> {
-        for (index, conn) in self.connections.iter_mut().enumerate() {
-            if let Some(new_request) = conn.has_new_request() {
-                return Some((index, new_request));
+    pub fn has_new(&self) -> Option<(usize, RequestStage)> {
+        for (index, conn) in self.connections.iter().enumerate() {
+            if let Some(new) = conn.has_new() {
+                return Some((index, new));
             }
         }
+
         None
     }
 
-    pub fn has_request_response(&mut self) -> Option<(usize, RequestResponse)> {
-        for (index, conn) in self.connections.iter_mut().enumerate() {
-            if let Some(request_response) = conn.has_request_response() {
-                return Some((index, request_response));
-            }
+    pub fn get(&self, index: usize) -> Option<&dyn TConnection> {
+        if let Some(conn) = self.connections.get(index) {
+            Some(conn)
+        } else {
+            None
         }
-        None
+    }
+}
+
+// Search
+
+fn search_fn_has(
+    connections: &Vec<Response<Box<dyn TConnection>, response::SearchResponse>>,
+    _: &Packets,
+) -> bool {
+    let mut count = 0;
+
+    for conn in connections.iter() {
+        count += conn.has() as usize
     }
 
-    pub fn has_request_final(&mut self) -> Option<(usize, RequestFinal)> {
-        for (index, conn) in self.connections.iter_mut().enumerate() {
-            if let Some(request_final) = conn.has_request_final() {
-                return Some((index, request_final));
+    count == connections.len()
+}
+
+fn search_fn_get(
+    connections: Vec<Response<Box<dyn TConnection>, response::SearchResponse>>,
+    _: Packets,
+) -> Vec<Adress> {
+    let mut res = Vec::new();
+
+    for conn in connections {
+        let v = conn.get();
+        for adress in v.adresses {
+            if !res.contains(&adress) {
+                res.push(adress)
             }
         }
-        None
     }
+
+    res
 }

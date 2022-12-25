@@ -4,7 +4,6 @@ mod avalibile;
 mod connect_on;
 mod info;
 mod info_request;
-mod new_request;
 mod register;
 mod register_response;
 mod request;
@@ -15,10 +14,9 @@ mod search_response;
 mod unregister;
 
 pub use self::{
-    avalibile::Avalibile, connect_on::ConnectOn, info::*, info_request::InfoRequest,
-    new_request::NewRequest, register::Register, register_response::RegisterResponse,
-    request::Request, request_final::RequestFinal, request_response::RequestResponse, search::*,
-    search_response::SearchResponse, unregister::UnRegister,
+    avalibile::*, connect_on::*, info::*, info_request::*, register::*, register_response::*,
+    request::*, request_final::*, request_response::*, search::*, search_response::*,
+    unregister::*,
 };
 
 #[derive(Bytes, Clone, Debug)]
@@ -33,8 +31,10 @@ pub enum Packets {
     Request(Request),
     NewRequest(NewRequest),
     RequestResponse(RequestResponse),
+    NewRequestResponse(NewRequestResponse),
+    RequestFinal(RequestFinal),
+    NewRequestFinal(NewRequestFinal),
     Avalibile(Avalibile),
     ConnectOn(ConnectOn),
-    RequestFinal(RequestFinal),
     Tick { session: u128 },
 }

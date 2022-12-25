@@ -8,3 +8,11 @@ pub struct RequestResponse {
     pub accepted: bool,
     pub secret: String,
 }
+
+#[derive(Bytes, Clone, Debug)]
+pub struct NewRequestResponse {
+    pub session: u128,
+    pub from: Adress,
+    pub accepted: bool,
+    pub secret: String,
+}

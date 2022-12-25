@@ -376,9 +376,9 @@ impl RelayServer {
                 if let Some(session) = session {
                     client.to_connect.push(Connecting::Start(session))
                 } else {
-                    let pak = Packets::RequestResponse(RequestResponse {
+                    let pak = Packets::NewRequestResponse(NewRequestResponse {
                         session: client.session,
-                        to: request.to,
+                        from: request.to,
                         accepted: false,
                         secret: String::new(),
                     });
@@ -416,10 +416,13 @@ impl RelayServer {
 
             for client in self.clients.iter_mut() {
                 if client.session == to {
-                    let mut pak = request_response.clone();
-                    pak.session = client.session;
-                    pak.to = from;
-                    let mut bytes = Packets::RequestResponse(pak).to_bytes();
+                    let pak = NewRequestResponse {
+                        session: client.session,
+                        from,
+                        accepted: request_response.accepted,
+                        secret: request_response.secret,
+                    };
+                    let mut bytes = Packets::NewRequestResponse(pak).to_bytes();
                     bytes.reverse();
                     let _ = client.conn.send(&bytes);
                     break;
@@ -443,7 +446,7 @@ impl RelayServer {
         for (index, request_final) in to_request_final {
             let mut to = None;
             for client in self.clients.iter() {
-                if client.adress == request_final.adress {
+                if client.adress == request_final.to {
                     if client
                         .to_connect
                         .contains(&Connecting::Start(request_final.session))
@@ -465,10 +468,12 @@ impl RelayServer {
             let mut session = None;
             for client in self.clients.iter_mut() {
                 if client.session == to {
-                    let mut pak = request_final.clone();
-                    pak.session = client.session;
-                    pak.adress = from;
-                    let mut bytes = Packets::RequestFinal(pak).to_bytes();
+                    let pak = NewRequestFinal {
+                        session: client.session,
+                        from,
+                        accepted: request_final.accepted,
+                    };
+                    let mut bytes = Packets::NewRequestFinal(pak).to_bytes();
                     bytes.reverse();
                     let _ = client.conn.send(&bytes);
                     session = Some(client.session);
@@ -661,6 +666,6 @@ impl RelayServer {
         self.connect();
 
         self.clients
-            .retain(|client| client.last_message.elapsed().unwrap().as_secs() < 10);
+            .retain(|client| client.last_message.elapsed().unwrap().as_secs() < 5);
     }
 }
