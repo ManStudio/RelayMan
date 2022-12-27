@@ -6,6 +6,7 @@ use crate::common::adress::Adress;
 pub struct ConnectOn {
     pub session: u128,
     pub to: String,
+    pub port: u16,
     pub adress: Adress,
     pub time: u128,
 }

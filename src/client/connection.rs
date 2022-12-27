@@ -10,7 +10,9 @@ use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
 use crate::common::{
     adress::Adress,
-    packets::{InfoRequest, Packets, Register, Request, RequestFinal, RequestResponse, Search},
+    packets::{
+        Avalibile, InfoRequest, Packets, Register, Request, RequestFinal, RequestResponse, Search,
+    },
 };
 
 use super::response::{self, NewRequestFinal, RequestStage, Response};
@@ -26,7 +28,6 @@ pub enum ConnectionError {
 pub struct Connection {
     pub session: u128,
     pub conn: Socket,
-
     pub info: ConnectionInfo,
     pub last_packet: SystemTime,
     pub packets: Vec<Packets>,
@@ -175,10 +176,17 @@ pub trait TConnection {
         adress: &Adress,
         accept: bool,
     ) -> Response<Box<dyn TConnection>, response::NewRequestFinal>;
-    fn request_final(&self, adress: &Adress, accept: bool);
+    fn request_final(
+        &self,
+        adress: &Adress,
+        accept: bool,
+    ) -> Response<Box<dyn TConnection>, response::ConnectOn>;
+    fn add_port(&self, port: u16);
+
+    fn adress(&self) -> Adress;
 
     fn has_new(&self) -> Option<RequestStage>;
-    fn c(&self) -> Box<dyn TConnection>;
+    fn c(&self) -> Box<dyn TConnection + Send>;
 }
 
 impl TConnection for Arc<RwLock<Connection>> {
@@ -262,13 +270,32 @@ impl TConnection for Arc<RwLock<Connection>> {
         }
     }
 
-    fn request_final(&self, adress: &Adress, accept: bool) {
+    fn request_final(
+        &self,
+        adress: &Adress,
+        accept: bool,
+    ) -> Response<Box<dyn TConnection>, response::ConnectOn> {
         let pak = Packets::RequestFinal(RequestFinal {
             session: 0,
             to: adress.clone(),
             accepted: accept,
         });
         self.write().unwrap().send(pak.clone());
+        Response {
+            connection: self.c(),
+            packets: pak,
+            fn_has: request_final_fn_has,
+            fn_get: request_final_fn_get,
+        }
+    }
+
+    fn add_port(&self, port: u16) {
+        let pak = Packets::Avalibile(Avalibile { session: 0, port });
+        self.write().unwrap().send(pak);
+    }
+
+    fn adress(&self) -> Adress {
+        self.read().unwrap().info.public.clone()
     }
 
     fn has_new(&self) -> Option<RequestStage> {
@@ -304,6 +331,16 @@ impl TConnection for Arc<RwLock<Connection>> {
                         }));
                         false
                     }
+                    Packets::ConnectOn(pak) => {
+                        res = Some(RequestStage::ConnectOn(response::ConnectOn {
+                            connection: self.c(),
+                            adress: pak.adress.clone(),
+                            to: pak.to.clone(),
+                            port: pak.port,
+                            time: pak.time,
+                        }));
+                        false
+                    }
                     _ => true,
                 }
             } else {
@@ -314,10 +351,12 @@ impl TConnection for Arc<RwLock<Connection>> {
         res
     }
 
-    fn c(&self) -> Box<dyn TConnection> {
+    fn c(&self) -> Box<dyn TConnection + Send> {
         Box::new(self.clone())
     }
 }
+
+unsafe impl Send for Connection {}
 
 // Search
 
@@ -482,6 +521,53 @@ fn request_response_fn_get(
                             connection: conn.c(),
                             from: pak.from.clone(),
                             accept: pak.accepted,
+                        });
+                        return false;
+                    }
+                }
+            }
+            true
+        })
+    }
+
+    if let Some(res) = res {
+        res
+    } else {
+        panic!()
+    }
+}
+
+// End RequestResponse
+//
+// RequestFinal
+
+fn request_final_fn_has(conn: &Box<dyn TConnection>, packet: &Packets) -> bool {
+    conn.step();
+    if let Packets::RequestFinal(packet) = packet {
+        for pak in conn.read().unwrap().packets.iter() {
+            if let Packets::ConnectOn(pak) = pak {
+                if pak.adress == packet.to {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn request_final_fn_get(conn: Box<dyn TConnection>, packet: Packets) -> response::ConnectOn {
+    let mut res = None;
+    if let Packets::RequestFinal(packet) = packet {
+        conn.write().unwrap().packets.retain(|pak| {
+            if let Packets::ConnectOn(pak) = pak {
+                if pak.adress == packet.to {
+                    if res.is_none() {
+                        res = Some(response::ConnectOn {
+                            connection: conn.c(),
+                            adress: pak.adress.clone(),
+                            to: pak.to.clone(),
+                            port: pak.port,
+                            time: pak.time,
                         });
                         return false;
                     }

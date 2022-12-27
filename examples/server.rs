@@ -6,12 +6,13 @@ fn main() {
     let mut server = RelayServer::new().unwrap();
     println!("Server Created");
     loop {
-        std::thread::sleep(Duration::from_millis(50));
+        std::thread::sleep(Duration::from_millis(0));
         server.step();
-        println!("");
         for client in server.clients.iter() {
-            println!("Client: {}", client.name);
+            println!(
+                "Client: {}, session: {} adress: {:?}, ports: {:?}, to_connect: {:?}",
+                client.name, client.session, client.adress, client.ports, client.to_connect
+            );
         }
-        println!("");
     }
 }

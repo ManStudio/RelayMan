@@ -1,13 +1,14 @@
 use bytes_kman::prelude::*;
 
-#[derive(Bytes, Clone, Debug)]
+#[derive(Bytes, Clone, Debug, Default)]
 pub enum SearchType<T> {
     Fuzzy(T),
     Exact(T),
+    #[default]
     None,
 }
 
-#[derive(Bytes, Clone, Debug)]
+#[derive(Bytes, Clone, Debug, Default)]
 pub struct Search {
     pub session: u128,
     pub client: SearchType<String>,

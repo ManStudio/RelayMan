@@ -1,12 +1,16 @@
-use std::time::Duration;
+use std::{mem::MaybeUninit, thread::JoinHandle, time::Duration};
 
-use rand::random;
+use rand::{random, Rng};
 use relay::{
     client::{ConnectionInfo, RelayClient},
-    common::packets::{Search, SearchType},
+    common::{
+        adress::Adress,
+        packets::{Search, SearchType},
+    },
 };
+use socket2::Socket;
 
-fn main() {
+fn main() -> ! {
     println!("Starting client");
     let info = ConnectionInfo {
         client: "Test".into(),
@@ -42,8 +46,67 @@ fn main() {
         }
     }
 
+    let mut connections = Vec::new();
+    let mut thread: Option<JoinHandle<(Adress, Socket)>> = None;
+
+    let mut port = rand::thread_rng().gen_range(2120..4000);
+    let mut connecting_to = Vec::new();
+
+    let search = client.search(Search::default()).get();
+    for adress in search {
+        if adress != client.get(0).unwrap().adress() {
+            if !connecting_to.contains(&adress) {
+                connecting_to.push(adress.clone());
+                println!("Cannecting to: {:?}", adress);
+                client.get(0).unwrap().request(&adress, String::new());
+            }
+        }
+    }
+
     loop {
         client.step();
+        if let Some(worker) = thread.take() {
+            if worker.is_finished() {
+                let res = worker.join().unwrap();
+                let mut buffer = [MaybeUninit::new(0); 1024];
+                res.1.set_nonblocking(false).unwrap();
+                res.1.send(b"Hello There").unwrap();
+                let len = res.1.recv(&mut buffer).unwrap();
+                let buffer: &[u8] = unsafe { std::mem::transmute(&buffer[0..len]) };
+                let message = String::from_utf8(buffer.to_vec()).unwrap();
+                println!("Message: {}", message);
+                connections.push(res);
+            } else {
+                thread = Some(worker)
+            }
+        }
+
         std::thread::sleep(Duration::from_secs(1));
+        if let Some((_, step)) = client.has_new() {
+            match step {
+                relay::client::response::RequestStage::NewRequest(new) => {
+                    connecting_to.push(new.from.clone());
+                    println!("New from: {:?}", new.from);
+                    new.accept(true);
+                }
+                relay::client::response::RequestStage::NewRequestResponse(new) => {
+                    println!("Res from: {:?}", new.from);
+                    println!("Add port: {}", port);
+                    new.add_port(port);
+                    port += 1;
+                    new.accept(true);
+                }
+                relay::client::response::RequestStage::NewRequestFinal(new) => {
+                    println!("Final from: {:?}", new.from);
+                    println!("Add port: {}", port);
+                    new.add_port(port);
+                    port += 1;
+                }
+                relay::client::response::RequestStage::ConnectOn(new) => {
+                    println!("ConnectOn: {:?}", new);
+                    thread = Some(std::thread::spawn(|| (new.adress.clone(), new.connect())));
+                }
+            }
+        }
     }
 }
