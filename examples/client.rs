@@ -104,7 +104,13 @@ fn main() -> ! {
                 }
                 relay_man::client::response::RequestStage::ConnectOn(new) => {
                     println!("ConnectOn: {:?}", new);
-                    thread = Some(std::thread::spawn(|| (new.adress.clone(), new.connect())));
+                    thread = Some(std::thread::spawn(|| {
+                        (
+                            new.adress.clone(),
+                            new.connect(Duration::from_secs(1), Duration::from_millis(10), false)
+                                .unwrap(),
+                        )
+                    }));
                 }
             }
         }
