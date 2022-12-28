@@ -1,7 +1,12 @@
 [package]
 name = "relay"
-version = "0.1.0"
+version = "0.0.9"
+description = "Peer to peer library"
 edition = "2021"
+author = "konkitoman"
+repository = "https://github.com/ManStudio/RelayMan"
+license = "GPL-3.0"
+keywords = ["p2p", "client", "server", "networking"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
