@@ -98,12 +98,7 @@ impl std::fmt::Debug for ConnectOn {
 }
 
 impl ConnectOn {
-    pub fn connect(self) -> Socket {
-        println!("Connect To: {}", self.to);
-        println!("Port: {}", self.port);
-        println!("Time: {}", self.time);
-        println!("Adress: {:?}", self.adress);
-
+    pub fn connect(self) -> Result<Socket, ()> {
         let my_addr = format!("localhost:{}", self.port)
             .to_socket_addrs()
             .unwrap()
@@ -116,8 +111,8 @@ impl ConnectOn {
 
         let socket =
             Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP)).unwrap();
-        socket.bind(&sock_my_addr).unwrap();
-        socket.set_nonblocking(true).unwrap();
+        let Ok(_) = socket.bind(&sock_my_addr) else{return Err(())};
+        let Ok(_) = socket.set_nonblocking(true) else {return Err(())};
 
         while SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -135,8 +130,7 @@ impl ConnectOn {
 
         loop {
             if time.elapsed().unwrap() > Duration::from_secs(10) {
-                println!("Give up");
-                panic!()
+                return Err(());
             }
 
             if time_send.elapsed().unwrap() > Duration::from_secs(1) {
@@ -164,7 +158,7 @@ impl ConnectOn {
 
         loop {
             if time.elapsed().unwrap() > Duration::from_secs(10) {
-                panic!("Give up on connect")
+                return Err(());
             }
 
             if time_send.elapsed().unwrap() > Duration::from_secs(1) {
@@ -175,14 +169,12 @@ impl ConnectOn {
             if let Ok(_) = socket.recv(&mut buffer) {
                 let buffer = unsafe { std::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&buffer) };
                 if buffer == message {
-                    println!("B: {:?}", buffer);
-                    println!("Connected");
                     break;
                 }
             }
         }
 
-        socket
+        Ok(socket)
     }
 }
 
