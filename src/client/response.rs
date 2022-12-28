@@ -98,7 +98,17 @@ impl std::fmt::Debug for ConnectOn {
 }
 
 impl ConnectOn {
-    pub fn connect(self) -> Result<Socket, ()> {
+    /// timeout need to be bigger then resend
+    pub fn connect(
+        self,
+        timeout: Duration,
+        resend: Duration,
+        nonblocking: bool,
+    ) -> Result<Socket, ()> {
+        if timeout < resend {
+            return Err(());
+        }
+
         let my_addr = format!("localhost:{}", self.port)
             .to_socket_addrs()
             .unwrap()
@@ -112,7 +122,9 @@ impl ConnectOn {
         let socket =
             Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP)).unwrap();
         let Ok(_) = socket.bind(&sock_my_addr) else{return Err(())};
-        let Ok(_) = socket.set_nonblocking(true) else {return Err(())};
+        let Ok(_) = socket.set_nonblocking(nonblocking) else {return Err(())};
+        let _ = socket.set_read_timeout(Some(timeout));
+        let _ = socket.set_write_timeout(Some(timeout));
 
         while SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -129,11 +141,11 @@ impl ConnectOn {
         let _ = socket.send_to(&message, &sock_addr);
 
         loop {
-            if time.elapsed().unwrap() > Duration::from_secs(10) {
+            if time.elapsed().unwrap() > timeout {
                 return Err(());
             }
 
-            if time_send.elapsed().unwrap() > Duration::from_secs(1) {
+            if time_send.elapsed().unwrap() > resend {
                 time_send = SystemTime::now();
                 let _ = socket.send(&message);
             }
@@ -157,11 +169,11 @@ impl ConnectOn {
         let _ = socket.send(&message);
 
         loop {
-            if time.elapsed().unwrap() > Duration::from_secs(10) {
+            if time.elapsed().unwrap() > timeout {
                 return Err(());
             }
 
-            if time_send.elapsed().unwrap() > Duration::from_secs(1) {
+            if time_send.elapsed().unwrap() > resend {
                 time_send = SystemTime::now();
                 let _ = socket.send(&message);
             }
