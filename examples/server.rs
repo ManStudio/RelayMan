@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use relay::server::RelayServer;
+use relay_man::server::RelayServer;
 
 fn main() {
     let mut server = RelayServer::new().unwrap();

@@ -1,7 +1,7 @@
 use std::{mem::MaybeUninit, thread::JoinHandle, time::Duration};
 
 use rand::{random, Rng};
-use relay::{
+use relay_man::{
     client::{ConnectionInfo, RelayClient},
     common::{
         adress::Adress,
@@ -84,25 +84,25 @@ fn main() -> ! {
         std::thread::sleep(Duration::from_secs(1));
         if let Some((_, step)) = client.has_new() {
             match step {
-                relay::client::response::RequestStage::NewRequest(new) => {
+                relay_man::client::response::RequestStage::NewRequest(new) => {
                     connecting_to.push(new.from.clone());
                     println!("New from: {:?}", new.from);
                     new.accept(true);
                 }
-                relay::client::response::RequestStage::NewRequestResponse(new) => {
+                relay_man::client::response::RequestStage::NewRequestResponse(new) => {
                     println!("Res from: {:?}", new.from);
                     println!("Add port: {}", port);
                     new.add_port(port);
                     port += 1;
                     new.accept(true);
                 }
-                relay::client::response::RequestStage::NewRequestFinal(new) => {
+                relay_man::client::response::RequestStage::NewRequestFinal(new) => {
                     println!("Final from: {:?}", new.from);
                     println!("Add port: {}", port);
                     new.add_port(port);
                     port += 1;
                 }
-                relay::client::response::RequestStage::ConnectOn(new) => {
+                relay_man::client::response::RequestStage::ConnectOn(new) => {
                     println!("ConnectOn: {:?}", new);
                     thread = Some(std::thread::spawn(|| (new.adress.clone(), new.connect())));
                 }

@@ -1,5 +1,5 @@
 [package]
-name = "relay"
+name = "relay-man"
 version = "0.0.9"
 description = "Peer to peer library"
 edition = "2021"
