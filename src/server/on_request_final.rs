@@ -25,7 +25,7 @@ impl RelayServer {
         }
 
         let Some(from) = from else{return};
-        let Some(to) = to else{return};
+        let Some(_) = to else{return};
 
         let mut session = None;
         for client in self.clients.iter_mut() {
