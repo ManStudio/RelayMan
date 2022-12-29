@@ -1,6 +1,6 @@
 [package]
 name = "relay-man"
-version = "0.0.9"
+version = "0.1.0"
 description = "Peer to peer library"
 edition = "2021"
 author = "konkitoman"
