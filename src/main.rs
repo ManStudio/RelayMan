@@ -7,9 +7,8 @@ fn main() {
 }
 
 fn server() {
-    let mut server = RelayServer::new().unwrap();
+    let mut server = RelayServer::new(Duration::from_secs(5), Duration::from_secs(10)).unwrap();
     loop {
-        std::thread::sleep(Duration::from_millis(50));
         server.step()
     }
 }

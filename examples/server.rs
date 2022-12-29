@@ -3,7 +3,7 @@ use std::time::Duration;
 use relay_man::server::RelayServer;
 
 fn main() {
-    let mut server = RelayServer::new().unwrap();
+    let mut server = RelayServer::new(Duration::from_secs(5), Duration::from_secs(10)).unwrap();
     println!("Server Created");
 
     let mut lasts = Vec::new();

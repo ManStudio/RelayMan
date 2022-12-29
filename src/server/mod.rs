@@ -13,7 +13,11 @@ use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 pub const PORT: u16 = 2120;
 
 use crate::common::{adress::Adress, packets::*};
-use std::{mem::MaybeUninit, net::ToSocketAddrs, time::SystemTime};
+use std::{
+    mem::MaybeUninit,
+    net::ToSocketAddrs,
+    time::{Duration, SystemTime},
+};
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum Connecting {
@@ -50,10 +54,12 @@ pub struct RelayServer {
     pub clients: Vec<Client>,
     pub conn: Socket,
     pub buffer: Vec<MaybeUninit<u8>>,
+    pub client_timeout: Duration,
+    pub connect_warmup: Duration,
 }
 
 impl RelayServer {
-    pub fn new() -> Result<Self, ()> {
+    pub fn new(client_timeout: Duration, connect_warmup: Duration) -> Result<Self, ()> {
         let adress = format!("localhost:{}", PORT);
         let adress = adress.to_socket_addrs().unwrap().next().unwrap();
         let adress_sock = SockAddr::from(adress);
@@ -74,6 +80,8 @@ impl RelayServer {
             clients: Vec::new(),
             conn,
             buffer,
+            client_timeout,
+            connect_warmup,
         })
     }
 
@@ -259,6 +267,6 @@ impl RelayServer {
         self.connect();
 
         self.clients
-            .retain(|client| client.last_message.elapsed().unwrap().as_secs() < 5);
+            .retain(|client| client.last_message.elapsed().unwrap() < self.client_timeout);
     }
 }

@@ -129,7 +129,7 @@ impl RelayServer {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos()
-                + 10000000000;
+                + self.connect_warmup.as_nanos();
 
             let pak = ConnectOn {
                 session: conn.0,
