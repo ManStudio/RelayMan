@@ -13,6 +13,7 @@ use self::response::{RequestStage, Response};
 
 pub struct RelayClient {
     pub connections: Vec<Arc<RwLock<Connection>>>,
+    pub connection_errors: Vec<ConnectionError>,
     pub info: ConnectionInfo,
 }
 
@@ -25,6 +26,7 @@ pub enum RelayClientError {
 
 impl RelayClient {
     pub fn new(info: ConnectionInfo, relays: Vec<String>) -> Result<Self, RelayClientError> {
+        let mut connection_errors = Vec::new();
         use RelayClientError::*;
         if relays.len() == 0 {
             return Err(NoRelays);
@@ -37,7 +39,7 @@ impl RelayClient {
                     connections.push(Arc::new(RwLock::new(conn)));
                 }
                 Err(error) => {
-                    return Err(ConnectionError(error));
+                    connection_errors.push(error);
                 }
             }
         }
@@ -46,7 +48,11 @@ impl RelayClient {
             return Err(NoConnections);
         }
 
-        Ok(Self { connections, info })
+        Ok(Self {
+            connections,
+            info,
+            connection_errors,
+        })
     }
 
     pub fn step(&mut self) {
