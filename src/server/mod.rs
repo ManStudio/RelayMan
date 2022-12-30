@@ -80,8 +80,8 @@ pub struct RelayServer {
 }
 
 impl RelayServer {
-    pub fn new(client_timeout: Duration) -> Result<Self, ()> {
-        let adress = format!("localhost:{}", PORT);
+    pub fn new(ip: impl Into<String>, client_timeout: Duration) -> Result<Self, ()> {
+        let adress = format!("{}:{}", ip.into(), PORT);
         let adress = adress.to_socket_addrs().unwrap().next().unwrap();
         let adress_sock = SockAddr::from(adress);
         let conn = Socket::new(

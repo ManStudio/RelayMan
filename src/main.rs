@@ -7,7 +7,7 @@ fn main() {
 }
 
 fn server() {
-    let mut server = RelayServer::new(Duration::from_secs(5)).unwrap();
+    let mut server = RelayServer::new("0.0.0.0", Duration::from_secs(5)).unwrap();
     loop {
         server.step()
     }

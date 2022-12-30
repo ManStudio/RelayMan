@@ -103,6 +103,15 @@ impl std::fmt::Debug for ConnectOn {
     }
 }
 
+#[derive(Debug)]
+pub enum ConnectOnError {
+    CannotBind,
+    CannotSetNonBlocking,
+    TimoutIsLesTheResend,
+    StageOneFailed,
+    StageTwoFailed,
+}
+
 impl ConnectOn {
     /// timeout need to be bigger then resend
     pub fn connect(
@@ -110,12 +119,12 @@ impl ConnectOn {
         timeout: Duration,
         resend: Duration,
         nonblocking: bool,
-    ) -> Result<Socket, ()> {
+    ) -> Result<Socket, ConnectOnError> {
         if timeout < resend {
-            return Err(());
+            return Err(ConnectOnError::TimoutIsLesTheResend);
         }
 
-        let my_addr = format!("localhost:{}", self.port)
+        let my_addr = format!("0.0.0.0:{}", self.port)
             .to_socket_addrs()
             .unwrap()
             .next()
@@ -127,8 +136,8 @@ impl ConnectOn {
 
         let socket =
             Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP)).unwrap();
-        let Ok(_) = socket.bind(&sock_my_addr) else{return Err(())};
-        let Ok(_) = socket.set_nonblocking(nonblocking) else {return Err(())};
+        let Ok(_) = socket.bind(&sock_my_addr) else{return Err(ConnectOnError::CannotBind)};
+        let Ok(_) = socket.set_nonblocking(nonblocking) else {return Err(ConnectOnError::CannotSetNonBlocking)};
         let _ = socket.set_read_timeout(Some(timeout));
         let _ = socket.set_write_timeout(Some(timeout));
 
@@ -148,7 +157,7 @@ impl ConnectOn {
 
         loop {
             if time.elapsed().unwrap() > timeout {
-                return Err(());
+                return Err(ConnectOnError::StageOneFailed);
             }
 
             if time_send.elapsed().unwrap() > resend {
@@ -176,7 +185,7 @@ impl ConnectOn {
 
         loop {
             if time.elapsed().unwrap() > timeout {
-                return Err(());
+                return Err(ConnectOnError::StageOneFailed);
             }
 
             if time_send.elapsed().unwrap() > resend {

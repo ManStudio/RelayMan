@@ -20,7 +20,11 @@ fn main() -> ! {
         privacy: false,
     };
     println!("Info: {:?}", info);
-    let mut client = RelayClient::new(info, vec![String::from("localhost")]).unwrap();
+    let mut client = RelayClient::new(
+        info,
+        vec![String::from("localhost"), String::from("w.konkito.com")],
+    )
+    .unwrap();
 
     println!("Create connection");
 
