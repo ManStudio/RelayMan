@@ -151,7 +151,7 @@ impl ConnectOn {
 
         let send_socket =
             Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP)).unwrap();
-        let Ok(_) = send_socket.bind(&sock_addr) else{return Err(ConnectOnError::CannotBind)};
+        let Ok(_) = send_socket.bind(&sock_send_addr) else{return Err(ConnectOnError::CannotBind)};
         let Ok(_) = send_socket.set_nonblocking(nonblocking) else {return Err(ConnectOnError::CannotSetNonBlocking)};
         let _ = send_socket.set_read_timeout(Some(resend));
         let _ = send_socket.set_write_timeout(Some(resend));
