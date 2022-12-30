@@ -26,7 +26,7 @@ pub enum ConnectionError {
 }
 
 pub struct Connection {
-    pub session: u128,
+    pub session: usize,
     pub conn: Socket,
     pub info: ConnectionInfo,
     pub last_packet: SystemTime,

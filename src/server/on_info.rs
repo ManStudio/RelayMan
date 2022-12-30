@@ -2,7 +2,7 @@ use bytes_kman::TBytes;
 
 use crate::common::packets::{Info, InfoRequest, Packets};
 
-use super::RelayServer;
+use super::{ClientStage, RelayServer};
 
 impl RelayServer {
     pub(crate) fn on_info(&mut self, index: usize, info: InfoRequest) {
@@ -23,13 +23,15 @@ impl RelayServer {
         };
 
         for client in self.clients.iter() {
-            if client.adress == info.adress {
-                pak.has = true;
-                pak.name = client.name.clone();
-                pak.client = client.client.clone();
-                pak.other = client.other.clone();
-                pak.adress = client.adress.clone();
-                break;
+            if let ClientStage::Registered(rclient) = &client.stage {
+                if rclient.adress == info.adress {
+                    pak.has = true;
+                    pak.name = rclient.name.clone();
+                    pak.client = rclient.client.clone();
+                    pak.other = rclient.other.clone();
+                    pak.adress = rclient.adress.clone();
+                    break;
+                }
             }
         }
 

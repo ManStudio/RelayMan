@@ -4,7 +4,7 @@ use crate::common::adress::Adress;
 
 #[derive(Bytes, Clone, Debug)]
 pub struct ConnectOn {
-    pub session: u128,
+    pub session: usize,
     pub to: String,
     pub port: u16,
     pub adress: Adress,

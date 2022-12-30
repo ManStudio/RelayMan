@@ -4,21 +4,23 @@ use bytes_kman::TBytes;
 
 use crate::common::packets::{ConnectOn, Packets};
 
-use super::{Connecting, RelayServer};
+use super::{ClientStage, Connecting, RelayServer};
 
 impl RelayServer {
     pub(crate) fn connect(&mut self) {
         let mut connect = Vec::new();
 
         for client in self.clients.iter() {
-            if !client.to_connect.is_empty() {
-                if !client.ports.is_empty() {
-                    for to_conn in client.to_connect.iter() {
-                        match to_conn {
-                            Connecting::Finishing(session) => {
-                                connect.push((client.session, *session));
+            if let ClientStage::Registered(rclient) = &client.stage {
+                if !rclient.to_connect.is_empty() {
+                    if !rclient.ports.is_empty() {
+                        for to_conn in rclient.to_connect.iter() {
+                            match to_conn {
+                                Connecting::Finishing(session) => {
+                                    connect.push((client.session, *session));
+                                }
+                                _ => {}
                             }
-                            _ => {}
                         }
                     }
                 }
@@ -35,10 +37,12 @@ impl RelayServer {
             let mut connecting_to = None;
             for (i, client) in self.clients.iter().enumerate() {
                 if client.session == conn.0 {
-                    for conn_to in client.to_connect.iter() {
-                        if conn_to.session() == conn.1 {
-                            connecting_to = Some(client.session);
-                            break;
+                    if let ClientStage::Registered(rclient) = &client.stage {
+                        for conn_to in rclient.to_connect.iter() {
+                            if conn_to.session() == conn.1 {
+                                connecting_to = Some(client.session);
+                                break;
+                            }
                         }
                     }
                     index1 = i;
@@ -52,10 +56,13 @@ impl RelayServer {
                 for (i, client) in self.clients.iter().enumerate() {
                     if client.session == conn.1 {
                         let mut finded = false;
-                        for conn_to in client.to_connect.iter() {
-                            if conn_to.session() == connecting_to {
-                                finded = true;
-                                break;
+
+                        if let ClientStage::Registered(rclient) = &client.stage {
+                            for conn_to in rclient.to_connect.iter() {
+                                if conn_to.session() == connecting_to {
+                                    finded = true;
+                                    break;
+                                }
                             }
                         }
                         if !finded {
@@ -79,21 +86,33 @@ impl RelayServer {
             let addr2;
 
             if let Some(client) = self.clients.get_mut(index1) {
-                port1 = client.ports.pop();
-                adress1 = client.from.clone();
-                addr1 = client.adress.clone();
+                if let ClientStage::Registered(rclient) = &mut client.stage {
+                    port1 = rclient.ports.pop();
+                    adress1 = client.from.clone();
+                    addr1 = rclient.adress.clone();
+                } else {
+                    continue;
+                }
             } else {
                 continue;
             }
 
             if let Some(client) = self.clients.get_mut(index2) {
-                port2 = client.ports.pop();
-                adress2 = client.from.clone();
-                addr2 = client.adress.clone();
+                if let ClientStage::Registered(rclient) = &mut client.stage {
+                    port2 = rclient.ports.pop();
+                    adress2 = client.from.clone();
+                    addr2 = rclient.adress.clone();
+                } else {
+                    continue;
+                }
             } else {
                 if let Some(port1) = port1 {
                     if let Some(client) = self.clients.get_mut(index1) {
-                        client.ports.push(port1)
+                        if let ClientStage::Registered(rclient) = &mut client.stage {
+                            rclient.ports.push(port1)
+                        } else {
+                            continue;
+                        }
                     }
                 }
                 continue;
@@ -102,27 +121,39 @@ impl RelayServer {
             let Some(port1) = port1 else {
                 if let Some(port2) = port2{
                     if let Some(client) = self.clients.get_mut(index2) {
-                        client.ports.push(port2);
+
+                        if let ClientStage::Registered(rclient) = &mut client.stage {
+                        rclient.ports.push(port2);
+                        }else{continue}
                     }
                 }
                 continue
             };
             let Some(port2) = port2 else {
                 if let Some(client) = self.clients.get_mut(index1){
-                   client.ports.push(port1);
+
+                        if let ClientStage::Registered(rclient) = &mut client.stage {
+                   rclient.ports.push(port1);
+                    }else{
+                        continue
+                    }
                 }
                 continue
             };
 
             if let Some(client) = self.clients.get_mut(index1) {
-                client
-                    .to_connect
-                    .retain(|to_conn| to_conn.session() != conn.1);
+                if let ClientStage::Registered(rclient) = &mut client.stage {
+                    rclient
+                        .to_connect
+                        .retain(|to_conn| to_conn.session() != conn.1);
+                }
             }
             if let Some(client) = self.clients.get_mut(index2) {
-                client
-                    .to_connect
-                    .retain(|to_conn| to_conn.session() != conn.0);
+                if let ClientStage::Registered(rclient) = &mut client.stage {
+                    rclient
+                        .to_connect
+                        .retain(|to_conn| to_conn.session() != conn.0);
+                }
             }
 
             let time = SystemTime::now()

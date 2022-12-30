@@ -10,7 +10,7 @@ pub enum SearchType<T> {
 
 #[derive(Bytes, Clone, Debug, Default)]
 pub struct Search {
-    pub session: u128,
+    pub session: usize,
     pub client: SearchType<String>,
     pub name: SearchType<String>,
     pub other: SearchType<Vec<u8>>,

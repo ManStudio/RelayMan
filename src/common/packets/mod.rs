@@ -36,5 +36,5 @@ pub enum Packets {
     NewRequestFinal(NewRequestFinal),
     Avalibile(Avalibile),
     ConnectOn(ConnectOn),
-    Tick { session: u128 },
+    Tick { session: usize },
 }

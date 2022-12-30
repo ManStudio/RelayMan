@@ -22,5 +22,6 @@ name = "client"
 
 [dependencies]
 bytes-kman = "0.1.7"
+polling = "2.5.2"
 rand = "0.8.5"
 socket2 = "0.4.7"

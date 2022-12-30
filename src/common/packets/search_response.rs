@@ -3,6 +3,6 @@ use bytes_kman::prelude::*;
 
 #[derive(Bytes, Clone, Debug)]
 pub struct SearchResponse {
-    pub session: u128,
+    pub session: usize,
     pub adresses: Vec<Adress>,
 }

@@ -81,7 +81,6 @@ fn main() -> ! {
             }
         }
 
-        std::thread::sleep(Duration::from_secs(1));
         if let Some((_, step)) = client.has_new() {
             match step {
                 relay_man::client::response::RequestStage::NewRequest(new) => {

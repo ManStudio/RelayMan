@@ -3,7 +3,7 @@ use bytes_kman::prelude::*;
 
 #[derive(Bytes, Clone, Debug)]
 pub struct RequestResponse {
-    pub session: u128,
+    pub session: usize,
     pub to: Adress,
     pub accepted: bool,
     pub secret: String,
@@ -11,7 +11,7 @@ pub struct RequestResponse {
 
 #[derive(Bytes, Clone, Debug)]
 pub struct NewRequestResponse {
-    pub session: u128,
+    pub session: usize,
     pub from: Adress,
     pub accepted: bool,
     pub secret: String,

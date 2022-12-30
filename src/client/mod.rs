@@ -45,6 +45,7 @@ impl RelayClient {
         }
 
         if connections.len() == 0 {
+            println!("Errors: {:?}", connection_errors);
             return Err(NoConnections);
         }
 
