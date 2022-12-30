@@ -90,6 +90,8 @@ impl Connection {
         }
 
         conn.set_nonblocking(true).unwrap();
+        let _ = conn.set_recv_buffer_size(1024);
+        let _ = conn.set_send_buffer_size(1024);
 
         Ok(Self {
             session: res.session,

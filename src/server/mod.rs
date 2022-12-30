@@ -17,7 +17,7 @@ use crate::common::{adress::Adress, packets::*};
 use std::{
     mem::MaybeUninit,
     net::ToSocketAddrs,
-    os::fd::{self, FromRawFd, IntoRawFd, RawFd},
+    os::fd::{FromRawFd, IntoRawFd, RawFd},
     time::{Duration, SystemTime},
 };
 
@@ -149,8 +149,6 @@ impl RelayServer {
         let mut events = Vec::new();
         let Ok(_) = self.poller.wait(&mut events, None) else {return};
 
-        println!("Events: {:?}", events);
-
         for event in events {
             if event.key == 0 {
                 self.accept_new();
@@ -186,13 +184,11 @@ impl RelayServer {
     }
 
     pub fn process_client(&mut self, session: usize) -> Option<RawFd> {
-        let mut to_search = None;
-        let mut to_info = None;
-        let mut to_request = None;
-        let mut to_request_response = None;
-        let mut to_request_final = None;
-
-        let mut to_remove = false;
+        let mut to_search = Vec::new();
+        let mut to_info = Vec::new();
+        let mut to_request = Vec::new();
+        let mut to_request_response = Vec::new();
+        let mut to_request_final = Vec::new();
 
         let mut used_adresses = Vec::new();
         let mut index = None;
@@ -219,117 +215,117 @@ impl RelayServer {
                 return None;
             }
 
-            println!("Len: {}", len);
-
             let buffer: &[u8] = unsafe { std::mem::transmute(&client.buffer[0..len]) };
             let mut buffer = buffer.to_owned();
-            let Some(packet) = Packets::from_bytes(&mut buffer)else{return fd};
-            match packet {
-                Packets::Register(register) => {
-                    if used_adresses.contains(&register.public) {
-                        let pak = Packets::RegisterResponse(RegisterResponse {
-                            accepted: false,
-                            session: 0,
+            while buffer.len() > 0 {
+                let Some(packet) = Packets::from_bytes(&mut buffer)else{return fd};
+                match packet {
+                    Packets::Register(register) => {
+                        if used_adresses.contains(&register.public) {
+                            let pak = Packets::RegisterResponse(RegisterResponse {
+                                accepted: false,
+                                session: 0,
+                            });
+                            let mut bytes = pak.to_bytes();
+                            bytes.reverse();
+
+                            let _ = client.conn.send(&bytes);
+                            return fd;
+                        }
+
+                        // Adress is valid
+
+                        client.stage = ClientStage::Registered(RegisteredClient {
+                            name: register.name,
+                            client: register.client,
+                            other: register.other,
+                            adress: register.public,
+                            ports: vec![],
+                            to_connect: vec![],
+                            privacy: register.privacy,
                         });
+
+                        let pak = Packets::RegisterResponse(RegisterResponse {
+                            accepted: true,
+                            session: client.session,
+                        });
+
                         let mut bytes = pak.to_bytes();
                         bytes.reverse();
 
                         let _ = client.conn.send(&bytes);
-                        return fd;
                     }
-
-                    // Adress is valid
-
-                    client.stage = ClientStage::Registered(RegisteredClient {
-                        name: register.name,
-                        client: register.client,
-                        other: register.other,
-                        adress: register.public,
-                        ports: vec![],
-                        to_connect: vec![],
-                        privacy: register.privacy,
-                    });
-
-                    let pak = Packets::RegisterResponse(RegisterResponse {
-                        accepted: true,
-                        session: client.session,
-                    });
-
-                    let mut bytes = pak.to_bytes();
-                    bytes.reverse();
-
-                    let _ = client.conn.send(&bytes);
-                }
-                Packets::UnRegister(session) => {
-                    if client.session == session.session {
-                        to_remove = true
-                    }
-                }
-                Packets::Search(search) => {
-                    if search.session == client.session {
-                        to_search = Some(search);
-                        client.last_message = SystemTime::now();
-                    }
-                }
-                Packets::InfoRequest(info) => {
-                    if info.session == client.session {
-                        to_info = Some(info);
-                        client.last_message = SystemTime::now();
-                    }
-                }
-                Packets::Request(request) => {
-                    if request.session == client.session {
-                        to_request = Some(request);
-                        client.last_message = SystemTime::now();
-                    }
-                }
-                Packets::RequestResponse(request_response) => {
-                    if request_response.session == client.session {
-                        to_request_response = Some(request_response);
-                        client.last_message = SystemTime::now();
-                    }
-                }
-                Packets::Avalibile(avalibile) => {
-                    if avalibile.session == client.session {
-                        if let ClientStage::Registered(client) = &mut client.stage {
-                            client.ports.push(avalibile.port);
+                    Packets::UnRegister(session) => {
+                        if client.session == session.session {
+                            client.last_message = std::time::UNIX_EPOCH;
                         }
-                        client.last_message = SystemTime::now();
                     }
-                }
-                Packets::RequestFinal(request_final) => {
-                    if request_final.session == client.session {
-                        to_request_final = Some(request_final);
-                        client.last_message = SystemTime::now();
+                    Packets::Search(search) => {
+                        if search.session == client.session {
+                            to_search.push(search);
+                            client.last_message = SystemTime::now();
+                        }
                     }
-                }
-                Packets::Tick { session } => {
-                    if client.session == session {
-                        client.last_message = SystemTime::now();
+                    Packets::InfoRequest(info) => {
+                        if info.session == client.session {
+                            to_info.push(info);
+                            client.last_message = SystemTime::now();
+                        }
                     }
-                }
+                    Packets::Request(request) => {
+                        if request.session == client.session {
+                            to_request.push(request);
+                            client.last_message = SystemTime::now();
+                        }
+                    }
+                    Packets::RequestResponse(request_response) => {
+                        if request_response.session == client.session {
+                            to_request_response.push(request_response);
+                            client.last_message = SystemTime::now();
+                        }
+                    }
+                    Packets::Avalibile(avalibile) => {
+                        if avalibile.session == client.session {
+                            if let ClientStage::Registered(client) = &mut client.stage {
+                                client.ports.push(avalibile.port);
+                            }
+                            client.last_message = SystemTime::now();
+                        }
+                    }
+                    Packets::RequestFinal(request_final) => {
+                        if request_final.session == client.session {
+                            to_request_final.push(request_final);
+                            client.last_message = SystemTime::now();
+                        }
+                    }
+                    Packets::Tick { session } => {
+                        if client.session == session {
+                            client.last_message = SystemTime::now();
+                        }
+                    }
 
-                _ => {}
+                    _ => {}
+                }
             }
         }
 
-        if let Some(search) = to_search {
+        for search in to_search {
             self.on_search(index, search)
         }
 
-        if let Some(info) = to_info {
+        for info in to_info {
             self.on_info(index, info)
         }
 
-        if let Some(request) = to_request {
+        for request in to_request {
             self.on_request(index, request)
         }
 
-        if let Some(request_response) = to_request_response {
+        for request_response in to_request_response {
             self.on_request_response(index, request_response)
         }
 
-        if let Some(request_final) = to_request_final {
+        for request_final in to_request_final {
             self.on_request_final(index, request_final)
         }
 
