@@ -7,6 +7,7 @@ pub struct RequestFinal {
     pub session: usize,
     pub to: Adress,
     pub accepted: bool,
+    pub time_offset: u128,
 }
 
 #[derive(Bytes, Clone, Debug)]

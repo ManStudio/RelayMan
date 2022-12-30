@@ -51,7 +51,10 @@ impl RelayServer {
                     if request_final.accepted {
                         for to_conn in rclient.to_connect.iter_mut() {
                             if to_conn.session() == request_final.session {
-                                *to_conn = Connecting::Finishing(to_conn.session());
+                                *to_conn = Connecting::Finishing(
+                                    to_conn.session(),
+                                    request_final.time_offset,
+                                );
                                 break;
                             }
                         }
@@ -73,7 +76,8 @@ impl RelayServer {
                 if request_final.accepted {
                     for to_conn in rclient.to_connect.iter_mut() {
                         if to_conn.session() == session {
-                            *to_conn = Connecting::Finishing(to_conn.session());
+                            *to_conn =
+                                Connecting::Finishing(to_conn.session(), request_final.time_offset);
                             break;
                         }
                     }

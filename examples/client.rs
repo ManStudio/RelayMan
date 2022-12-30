@@ -93,7 +93,7 @@ fn main() -> ! {
                     println!("Add port: {}", port);
                     new.add_port(port);
                     port += 1;
-                    new.accept(true);
+                    new.accept(true, Some(Duration::from_secs(1).as_nanos()));
                 }
                 relay_man::client::response::RequestStage::NewRequestFinal(new) => {
                     println!("Final from: {:?}", new.from);

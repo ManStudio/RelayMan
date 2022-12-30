@@ -16,8 +16,8 @@ impl RelayServer {
                     if !rclient.ports.is_empty() {
                         for to_conn in rclient.to_connect.iter() {
                             match to_conn {
-                                Connecting::Finishing(session) => {
-                                    connect.push((client.session, *session));
+                                Connecting::Finishing(session, time_offset) => {
+                                    connect.push((client.session, *session, *time_offset));
                                 }
                                 _ => {}
                             }
@@ -160,7 +160,7 @@ impl RelayServer {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos()
-                + self.connect_warmup.as_nanos();
+                + conn.2;
 
             let pak = ConnectOn {
                 session: conn.0,

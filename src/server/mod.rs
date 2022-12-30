@@ -24,24 +24,24 @@ use std::{
 #[derive(PartialEq, Clone, Debug)]
 pub enum Connecting {
     Start(usize),
-    Finishing(usize),
+    Finishing(usize, u128),
 }
 impl Connecting {
     pub fn session(&self) -> usize {
         match self {
             Connecting::Start(s) => *s,
-            Connecting::Finishing(s) => *s,
+            Connecting::Finishing(s, _) => *s,
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ClientStage {
     NotRegistered,
     Registered(RegisteredClient),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RegisteredClient {
     pub name: String,
     pub client: String,
@@ -63,6 +63,12 @@ pub struct Client {
     pub buffer: Vec<MaybeUninit<u8>>,
 }
 
+impl PartialEq for Client {
+    fn eq(&self, other: &Self) -> bool {
+        self.session == other.session && self.stage == other.stage
+    }
+}
+
 #[derive(Debug)]
 pub struct RelayServer {
     pub clients: Vec<Client>,
@@ -71,11 +77,10 @@ pub struct RelayServer {
     pub fd: RawFd,
     pub buffer: Vec<MaybeUninit<u8>>,
     pub client_timeout: Duration,
-    pub connect_warmup: Duration,
 }
 
 impl RelayServer {
-    pub fn new(client_timeout: Duration, connect_warmup: Duration) -> Result<Self, ()> {
+    pub fn new(client_timeout: Duration) -> Result<Self, ()> {
         let adress = format!("localhost:{}", PORT);
         let adress = adress.to_socket_addrs().unwrap().next().unwrap();
         let adress_sock = SockAddr::from(adress);
@@ -108,7 +113,6 @@ impl RelayServer {
             buffer,
             fd,
             client_timeout,
-            connect_warmup,
             conn,
         })
     }

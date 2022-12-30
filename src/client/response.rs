@@ -61,8 +61,14 @@ impl NewRequestResponse {
         self.connection.add_port(port)
     }
 
-    pub fn accept(self, accept: bool) -> Response<Box<dyn TConnection>, ConnectOn> {
-        self.connection.request_final(&self.from, accept)
+    /// `time_offset` should be in nanosecconds
+    pub fn accept(
+        self,
+        accept: bool,
+        time_offset: Option<u128>,
+    ) -> Response<Box<dyn TConnection>, ConnectOn> {
+        self.connection
+            .request_final(&self.from, accept, time_offset)
     }
 }
 

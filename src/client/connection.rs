@@ -178,10 +178,13 @@ pub trait TConnection {
         adress: &Adress,
         accept: bool,
     ) -> Response<Box<dyn TConnection>, response::NewRequestFinal>;
+
+    /// `time_offset` should be in nanosecconds
     fn request_final(
         &self,
         adress: &Adress,
         accept: bool,
+        time_offset: Option<u128>,
     ) -> Response<Box<dyn TConnection>, response::ConnectOn>;
     fn add_port(&self, port: u16);
 
@@ -276,11 +279,18 @@ impl TConnection for Arc<RwLock<Connection>> {
         &self,
         adress: &Adress,
         accept: bool,
+        time_offset: Option<u128>,
     ) -> Response<Box<dyn TConnection>, response::ConnectOn> {
+        let time_offset = match time_offset {
+            Some(s) => s,
+            None => Duration::from_secs(1).as_nanos(),
+        };
+
         let pak = Packets::RequestFinal(RequestFinal {
             session: 0,
             to: adress.clone(),
             accepted: accept,
+            time_offset,
         });
         self.write().unwrap().send(pak.clone());
         Response {
