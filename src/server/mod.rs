@@ -168,6 +168,8 @@ impl RelayServer {
             let session = self.create_session();
             self.poller.add(fd, Event::readable(session)).unwrap();
             let conn = unsafe { Socket::from_raw_fd(fd) };
+            let _ = conn.set_recv_buffer_size(1024);
+            let _ = conn.set_send_buffer_size(1024);
 
             let client = Client {
                 session,
@@ -334,8 +336,6 @@ impl RelayServer {
 
     pub fn step(&mut self) {
         self.listen();
-        // self.accept_new();
-        // self.process_messages();
         self.clients.retain(|client| {
             if client.last_message.elapsed().unwrap() < self.client_timeout {
                 true
