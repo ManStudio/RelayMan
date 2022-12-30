@@ -20,7 +20,6 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-#[cfg(any(target_os = "unix", target_os = "linux"))]
 use std::os::unix::io::{FromRawFd, IntoRawFd, RawFd};
 
 #[derive(PartialEq, Clone, Debug)]
