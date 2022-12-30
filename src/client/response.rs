@@ -134,27 +134,12 @@ impl ConnectOn {
 
         let sock_my_addr = SockAddr::from(my_addr);
         let sock_addr = SockAddr::from(addr);
-        let sock_send_addr = SockAddr::from(
-            format!("{}:{}", my_addr.ip(), addr.port())
-                .to_socket_addrs()
-                .unwrap()
-                .next()
-                .unwrap(),
-        );
-
-        let recv_socket =
+        let socket =
             Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP)).unwrap();
-        let Ok(_) = recv_socket.bind(&sock_my_addr) else{return Err(ConnectOnError::CannotBind)};
-        let Ok(_) = recv_socket.set_nonblocking(nonblocking) else {return Err(ConnectOnError::CannotSetNonBlocking)};
-        let _ = recv_socket.set_read_timeout(Some(resend));
-        let _ = recv_socket.set_write_timeout(Some(resend));
-
-        let send_socket =
-            Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP)).unwrap();
-        let Ok(_) = send_socket.bind(&sock_send_addr) else{return Err(ConnectOnError::CannotBind)};
-        let Ok(_) = send_socket.set_nonblocking(nonblocking) else {return Err(ConnectOnError::CannotSetNonBlocking)};
-        let _ = send_socket.set_read_timeout(Some(resend));
-        let _ = send_socket.set_write_timeout(Some(resend));
+        let Ok(_) = socket.bind(&sock_my_addr) else{return Err(ConnectOnError::CannotBind)};
+        let Ok(_) = socket.set_nonblocking(nonblocking) else {return Err(ConnectOnError::CannotSetNonBlocking)};
+        let _ = socket.set_read_timeout(Some(resend));
+        let _ = socket.set_write_timeout(Some(resend));
 
         while SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -168,20 +153,20 @@ impl ConnectOn {
 
         let mut buffer = [MaybeUninit::new(0); 4];
         let message = [1, 4, 21, 6];
-        let _ = send_socket.send_to(&message, &sock_addr);
+        let _ = socket.send_to(&message, &sock_addr);
 
         loop {
             if time.elapsed().unwrap() > timeout {
                 return Err(ConnectOnError::StageOneFailed);
             }
 
-            if let Ok((_, from)) = recv_socket.recv_from(&mut buffer) {
+            if let Ok((_, from)) = socket.recv_from(&mut buffer) {
                 println!("recived");
                 if from.as_socket().unwrap() == sock_addr.as_socket().unwrap() {
                     if unsafe { std::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&buffer) }
                         == message
                     {
-                        recv_socket.connect(&sock_addr).unwrap();
+                        socket.connect(&sock_addr).unwrap();
                         println!("First stage succesful!");
                         break;
                     }
@@ -190,21 +175,21 @@ impl ConnectOn {
 
             if time_send.elapsed().unwrap() > resend {
                 time_send = SystemTime::now();
-                let _ = send_socket.send_to(&message, &sock_addr);
+                let _ = socket.send_to(&message, &sock_addr);
             }
         }
 
         let message = [21, 20, 20, 21];
         let time = SystemTime::now();
         let mut time_send = time.clone();
-        let _ = send_socket.send(&message);
+        let _ = socket.send(&message);
 
         loop {
             if time.elapsed().unwrap() > timeout {
                 return Err(ConnectOnError::StageTwoFailed);
             }
 
-            if let Ok(_) = recv_socket.recv(&mut buffer) {
+            if let Ok(_) = socket.recv(&mut buffer) {
                 let buffer = unsafe { std::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&buffer) };
                 if buffer == message {
                     break;
@@ -213,11 +198,11 @@ impl ConnectOn {
 
             if time_send.elapsed().unwrap() > resend {
                 time_send = SystemTime::now();
-                let _ = send_socket.send(&message);
+                let _ = socket.send(&message);
             }
         }
 
-        Ok(send_socket)
+        Ok(socket)
     }
 }
 
