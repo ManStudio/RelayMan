@@ -134,6 +134,13 @@ impl ConnectOn {
 
         let sock_my_addr = SockAddr::from(my_addr);
         let sock_addr = SockAddr::from(addr);
+        let sock_send_addr = SockAddr::from(
+            format!("{}:{}", my_addr.ip(), addr.port())
+                .to_socket_addrs()
+                .unwrap()
+                .next()
+                .unwrap(),
+        );
 
         let recv_socket =
             Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP)).unwrap();
