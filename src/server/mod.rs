@@ -17,9 +17,11 @@ use crate::common::{adress::Adress, packets::*};
 use std::{
     mem::MaybeUninit,
     net::ToSocketAddrs,
-    os::fd::{FromRawFd, IntoRawFd, RawFd},
     time::{Duration, SystemTime},
 };
+
+#[cfg(any(target_os = "unix", target_os = "linux"))]
+use std::os::unix::io::{FromRawFd, IntoRawFd, RawFd};
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum Connecting {
