@@ -2,15 +2,14 @@ use std::{mem::MaybeUninit, thread::JoinHandle, time::Duration};
 
 use rand::{random, Rng};
 use relay_man::{
-    client::{ConnectionInfo, RelayClient},
+    client::{response::Conn, ConnectionInfo, RelayClient},
     common::{
         adress::Adress,
         packets::{Search, SearchType},
     },
 };
-use socket2::Socket;
 
-fn main() -> ! {
+fn main() {
     println!("Starting client");
     let info = ConnectionInfo {
         client: "Test".into(),
@@ -51,9 +50,9 @@ fn main() -> ! {
     }
 
     let mut connections = Vec::new();
-    let mut thread: Option<JoinHandle<(Adress, Socket)>> = None;
+    let mut thread: Option<JoinHandle<(Adress, Conn)>> = None;
 
-    let mut port = rand::thread_rng().gen_range(2120..4000);
+    let mut port = rand::thread_rng().gen_range(2120..50000);
     let mut connecting_to = Vec::new();
 
     let search = client.search(Search::default()).get();
@@ -80,6 +79,7 @@ fn main() -> ! {
                 let message = String::from_utf8(buffer.to_vec()).unwrap();
                 println!("Message: {}", message);
                 connections.push(res);
+                return;
             } else {
                 thread = Some(worker)
             }
@@ -97,7 +97,7 @@ fn main() -> ! {
                     println!("Add port: {}", port);
                     new.add_port(port);
                     port += 1;
-                    new.accept(true, Some(Duration::from_secs(1).as_nanos()));
+                    new.accept(true, Some(Duration::from_secs(2).as_nanos()));
                 }
                 relay_man::client::response::RequestStage::NewRequestFinal(new) => {
                     println!("Final from: {:?}", new.from);
@@ -110,7 +110,7 @@ fn main() -> ! {
                     thread = Some(std::thread::spawn(|| {
                         (
                             new.adress.clone(),
-                            new.connect(Duration::from_secs(3), Duration::from_nanos(1000), true)
+                            new.connect(Duration::from_secs(5), Duration::from_millis(10), false)
                                 .unwrap(),
                         )
                     }));

@@ -1,13 +1,14 @@
 use std::{
-    io::Write,
     mem::MaybeUninit,
-    net::ToSocketAddrs,
+    net::{SocketAddr, ToSocketAddrs},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
 use crate::common::{adress::Adress, packets::Packets};
+
+use std::os::fd::{FromRawFd, IntoRawFd, RawFd};
 
 use super::TConnection;
 
@@ -113,6 +114,64 @@ pub enum ConnectOnError {
     StageTwoFailed,
 }
 
+pub struct Conn {
+    my_adress: SocketAddr,
+    addr: SocketAddr,
+    port: u16,
+    fd: RawFd,
+    pub socket: Socket,
+}
+
+impl Conn {
+    pub fn fd(&self) -> RawFd {
+        self.fd
+    }
+
+    pub fn addr(&self) -> SocketAddr {
+        self.addr
+    }
+
+    pub fn my_addr(&self) -> SocketAddr {
+        self.my_adress
+    }
+
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
+    pub fn socket(&self) -> &Socket {
+        &self.socket
+    }
+
+    pub fn mut_socket(&mut self) -> &mut Socket {
+        &mut self.socket
+    }
+}
+
+impl std::ops::Deref for Conn {
+    type Target = Socket;
+
+    fn deref(&self) -> &Self::Target {
+        &self.socket
+    }
+}
+
+impl std::ops::DerefMut for Conn {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.socket
+    }
+}
+
+impl Drop for Conn {
+    fn drop(&mut self) {
+        if let Ok(upnp_gateway) = igd::search_gateway(igd::SearchOptions::default()) {
+            if let SocketAddr::V4(_) = self.my_adress {
+                let _ = upnp_gateway.remove_port(igd::PortMappingProtocol::UDP, self.port);
+            }
+        }
+    }
+}
+
 impl ConnectOn {
     /// timeout need to be bigger then resend
     pub fn connect(
@@ -120,26 +179,47 @@ impl ConnectOn {
         timeout: Duration,
         resend: Duration,
         nonblocking: bool,
-    ) -> Result<Socket, ConnectOnError> {
+    ) -> Result<Conn, ConnectOnError> {
         if timeout < resend {
             return Err(ConnectOnError::TimoutIsLesTheResend);
         }
 
-        let my_addr = format!("0.0.0.0:{}", self.port)
+        let local_adress = local_ip_address::local_ip().unwrap();
+        let my_addr = format!("{}:{}", local_adress, self.port)
             .to_socket_addrs()
             .unwrap()
             .next()
             .unwrap();
         let addr = self.to.to_socket_addrs().unwrap().next().unwrap();
 
+        if let Ok(upnp_gateway) = igd::search_gateway(igd::SearchOptions::default()) {
+            if let SocketAddr::V4(ip) = my_addr {
+                let _ = upnp_gateway.add_port(
+                    igd::PortMappingProtocol::UDP,
+                    self.port,
+                    ip,
+                    10000,
+                    "RelayMan",
+                );
+            }
+        }
+
         let sock_my_addr = SockAddr::from(my_addr);
         let sock_addr = SockAddr::from(addr);
         let socket =
             Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP)).unwrap();
-        let Ok(_) = socket.bind(&sock_my_addr) else{return Err(ConnectOnError::CannotBind)};
-        let Ok(_) = socket.set_nonblocking(nonblocking) else {return Err(ConnectOnError::CannotSetNonBlocking)};
-        let _ = socket.set_read_timeout(Some(resend));
-        let _ = socket.set_write_timeout(Some(resend));
+        let fd = socket.into_raw_fd();
+        let conn = Conn {
+            my_adress: my_addr,
+            addr,
+            fd,
+            port: self.port,
+            socket: unsafe { Socket::from_raw_fd(fd) },
+        };
+        let Ok(_) = conn.bind(&sock_my_addr) else{return Err(ConnectOnError::CannotBind)};
+        let Ok(_) = conn.set_nonblocking(nonblocking) else {return Err(ConnectOnError::CannotSetNonBlocking)};
+        let _ = conn.set_read_timeout(Some(resend));
+        let _ = conn.set_write_timeout(Some(resend));
 
         while SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -153,20 +233,19 @@ impl ConnectOn {
 
         let mut buffer = [MaybeUninit::new(0); 4];
         let message = [1, 4, 21, 6];
-        let _ = socket.send_to(&message, &sock_addr);
+        let _ = conn.send_to(&message, &sock_addr);
 
         loop {
             if time.elapsed().unwrap() > timeout {
                 return Err(ConnectOnError::StageOneFailed);
             }
 
-            if let Ok((_, from)) = socket.recv_from(&mut buffer) {
-                println!("recived");
+            if let Ok((len, from)) = conn.recv_from(&mut buffer) {
                 if from.as_socket().unwrap() == sock_addr.as_socket().unwrap() {
-                    if unsafe { std::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&buffer) }
+                    if unsafe { std::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&buffer[0..len]) }
                         == message
                     {
-                        socket.connect(&sock_addr).unwrap();
+                        conn.connect(&sock_addr).unwrap();
                         println!("First stage succesful!");
                         break;
                     }
@@ -175,22 +254,23 @@ impl ConnectOn {
 
             if time_send.elapsed().unwrap() > resend {
                 time_send = SystemTime::now();
-                let _ = socket.send_to(&message, &sock_addr);
+                let _ = conn.send_to(&message, &sock_addr);
             }
         }
 
         let message = [21, 20, 20, 21];
         let time = SystemTime::now();
         let mut time_send = time.clone();
-        let _ = socket.send(&message);
+        let _ = conn.send(&message);
 
         loop {
             if time.elapsed().unwrap() > timeout {
                 return Err(ConnectOnError::StageTwoFailed);
             }
 
-            if let Ok(_) = socket.recv(&mut buffer) {
-                let buffer = unsafe { std::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&buffer) };
+            if let Ok(len) = conn.recv(&mut buffer) {
+                let buffer =
+                    unsafe { std::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&buffer[0..len]) };
                 if buffer == message {
                     break;
                 }
@@ -198,11 +278,11 @@ impl ConnectOn {
 
             if time_send.elapsed().unwrap() > resend {
                 time_send = SystemTime::now();
-                let _ = socket.send(&message);
+                let _ = conn.send(&message);
             }
         }
 
-        Ok(socket)
+        Ok(conn)
     }
 }
 

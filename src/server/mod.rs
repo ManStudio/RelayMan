@@ -20,7 +20,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use std::os::unix::io::{FromRawFd, IntoRawFd, RawFd};
+use std::os::fd::{FromRawFd, IntoRawFd, RawFd};
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum Connecting {
