@@ -6,9 +6,7 @@ use std::{
 
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
-use crate::common::{adress::Adress, packets::Packets};
-
-use std::os::fd::{FromRawFd, IntoRawFd, RawFd};
+use crate::common::{adress::Adress, packets::Packets, FromRawSock, IntoRawSock, RawSock};
 
 use super::TConnection;
 
@@ -118,12 +116,12 @@ pub struct Conn {
     my_adress: SocketAddr,
     addr: SocketAddr,
     port: u16,
-    fd: RawFd,
+    fd: RawSock,
     pub socket: Socket,
 }
 
 impl Conn {
-    pub fn fd(&self) -> RawFd {
+    pub fn fd(&self) -> RawSock {
         self.fd
     }
 
@@ -208,13 +206,13 @@ impl ConnectOn {
         let sock_addr = SockAddr::from(addr);
         let socket =
             Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP)).unwrap();
-        let fd = socket.into_raw_fd();
+        let fd = socket.into_raw();
         let conn = Conn {
             my_adress: my_addr,
             addr,
             fd,
             port: self.port,
-            socket: unsafe { Socket::from_raw_fd(fd) },
+            socket: unsafe { Socket::from_raw(fd) },
         };
         let Ok(_) = conn.bind(&sock_my_addr) else{return Err(ConnectOnError::CannotBind)};
         let Ok(_) = conn.set_nonblocking(nonblocking) else {return Err(ConnectOnError::CannotSetNonBlocking)};

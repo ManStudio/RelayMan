@@ -21,7 +21,7 @@ fn main() {
     println!("Info: {:?}", info);
     let mut client = RelayClient::new(
         info,
-        vec![String::from("localhost"), String::from("w.konkito.com")],
+        vec![String::from("0.0.0.0"), String::from("w.konkito.com")],
     )
     .unwrap();
 

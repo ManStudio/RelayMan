@@ -13,14 +13,12 @@ use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 // RelayServer allways should be on this port
 pub const PORT: u16 = 2120;
 
-use crate::common::{adress::Adress, packets::*};
+use crate::common::{adress::Adress, packets::*, FromRawSock, IntoRawSock, RawSock};
 use std::{
     mem::MaybeUninit,
     net::ToSocketAddrs,
     time::{Duration, SystemTime},
 };
-
-use std::os::fd::{FromRawFd, IntoRawFd, RawFd};
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum Connecting {
@@ -57,7 +55,7 @@ pub struct RegisteredClient {
 pub struct Client {
     pub session: usize,
     pub conn: Socket,
-    pub fd: RawFd,
+    pub fd: RawSock,
     pub from: SockAddr,
     pub stage: ClientStage,
     pub last_message: SystemTime,
@@ -75,7 +73,7 @@ pub struct RelayServer {
     pub clients: Vec<Client>,
     pub poller: Poller,
     pub conn: Socket,
-    pub fd: RawFd,
+    pub fd: RawSock,
     pub buffer: Vec<MaybeUninit<u8>>,
     pub client_timeout: Duration,
 }
@@ -101,9 +99,9 @@ impl RelayServer {
             return Err(())
         };
 
-        let fd = conn.into_raw_fd();
+        let fd = conn.into_raw();
         poller.add(fd, Event::readable(0)).unwrap();
-        let conn = unsafe { Socket::from_raw_fd(fd) };
+        let conn = unsafe { Socket::from_raw(fd) };
 
         let mut buffer = Vec::new();
         buffer.resize(1024, MaybeUninit::new(0));
@@ -169,10 +167,10 @@ impl RelayServer {
     pub fn accept_new(&mut self) {
         if let Ok((conn, from)) = self.conn.accept() {
             let _ = conn.set_nonblocking(true);
-            let fd = conn.into_raw_fd();
+            let fd = conn.into_raw();
             let session = self.create_session();
             self.poller.add(fd, Event::readable(session)).unwrap();
-            let conn = unsafe { Socket::from_raw_fd(fd) };
+            let conn = unsafe { Socket::from_raw(fd) };
             let _ = conn.set_recv_buffer_size(1024);
             let _ = conn.set_send_buffer_size(1024);
 
@@ -190,7 +188,7 @@ impl RelayServer {
         }
     }
 
-    pub fn process_client(&mut self, session: usize) -> Option<RawFd> {
+    pub fn process_client(&mut self, session: usize) -> Option<RawSock> {
         let mut to_search = Vec::new();
         let mut to_info = Vec::new();
         let mut to_request = Vec::new();
