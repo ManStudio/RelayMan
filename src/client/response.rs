@@ -162,11 +162,11 @@ impl std::ops::DerefMut for Conn {
 
 impl Drop for Conn {
     fn drop(&mut self) {
-        if let Ok(upnp_gateway) = igd::search_gateway(igd::SearchOptions::default()) {
-            if let SocketAddr::V4(_) = self.my_adress {
-                let _ = upnp_gateway.remove_port(igd::PortMappingProtocol::UDP, self.port);
-            }
-        }
+        // if let Ok(upnp_gateway) = igd::search_gateway(igd::SearchOptions::default()) {
+        //     if let SocketAddr::V4(_) = self.my_adress {
+        //         let _ = upnp_gateway.remove_port(igd::PortMappingProtocol::UDP, self.port);
+        //     }
+        // }
     }
 }
 
@@ -182,8 +182,8 @@ impl ConnectOn {
             return Err(ConnectOnError::TimoutIsLesTheResend);
         }
 
-        let local_adress = local_ip_address::local_ip().unwrap();
-        let my_addr = format!("{}:{}", local_adress, self.port)
+        // let local_adress = local_ip_address::local_ip().unwrap();
+        let my_addr = format!("0.0.0.0:{}", self.port)
             .to_socket_addrs()
             .unwrap()
             .next()
