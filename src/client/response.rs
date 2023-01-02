@@ -244,6 +244,7 @@ impl ConnectOn {
             }
 
             if let Ok((len, from)) = conn.recv_from(&mut buffer) {
+                println!("Recb {:?}", from);
                 if from.as_socket().unwrap() == sock_addr.as_socket().unwrap() {
                     if unsafe { std::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&buffer[0..len]) }
                         == message
