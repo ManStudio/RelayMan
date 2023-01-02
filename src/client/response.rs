@@ -190,22 +190,27 @@ impl ConnectOn {
             .unwrap();
         let addr = self.to.to_socket_addrs().unwrap().next().unwrap();
 
-        if let Ok(upnp_gateway) = igd::search_gateway(igd::SearchOptions::default()) {
-            if let SocketAddr::V4(ip) = my_addr {
-                let _ = upnp_gateway.add_port(
-                    igd::PortMappingProtocol::UDP,
-                    self.port,
-                    ip,
-                    10000,
-                    "RelayMan",
-                );
-            }
-        }
+        // if let Ok(upnp_gateway) = igd::search_gateway(igd::SearchOptions::default()) {
+        //     if let SocketAddr::V4(ip) = my_addr {
+        //         let _ = upnp_gateway.add_port(
+        //             igd::PortMappingProtocol::UDP,
+        //             self.port,
+        //             ip,
+        //             10000,
+        //             "RelayMan",
+        //         );
+        //     }
+        // }
 
         let sock_my_addr = SockAddr::from(my_addr);
         let sock_addr = SockAddr::from(addr);
-        let socket =
-            Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP)).unwrap();
+        let send_sock_addr = SocketAddr::new(addr.ip(), addr.port() + 1).into();
+        let socket = Socket::new(
+            Domain::for_address(addr),
+            Type::DGRAM,
+            Some(Protocol::from(0)),
+        )
+        .unwrap();
         let fd = socket.into_raw();
         let conn = Conn {
             my_adress: my_addr,
@@ -231,7 +236,7 @@ impl ConnectOn {
 
         let mut buffer = [MaybeUninit::new(0); 4];
         let message = [1, 4, 21, 6];
-        let _ = conn.send_to(&message, &sock_addr);
+        let _ = conn.send_to(&message, &send_sock_addr);
 
         loop {
             if time.elapsed().unwrap() > timeout {
@@ -252,7 +257,7 @@ impl ConnectOn {
 
             if time_send.elapsed().unwrap() > resend {
                 time_send = SystemTime::now();
-                let _ = conn.send_to(&message, &sock_addr);
+                let _ = conn.send_to(&message, &send_sock_addr);
             }
         }
 

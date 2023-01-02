@@ -110,7 +110,7 @@ fn main() {
                     thread = Some(std::thread::spawn(|| {
                         (
                             new.adress.clone(),
-                            new.connect(Duration::from_secs(5), Duration::from_millis(10), false)
+                            new.connect(Duration::from_secs(5), Duration::from_millis(100), true)
                                 .unwrap(),
                         )
                     }));
