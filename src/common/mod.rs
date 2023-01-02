@@ -3,8 +3,8 @@ pub mod packets;
 
 #[cfg(target_os = "windows")]
 pub type RawSock = std::os::windows::io::RawSocket;
-#[cfg(target_os = "linux")]
-pub type RawSock = std::os::fd::RawFd;
+#[cfg(any(target_os = "linux", target_os = "android"))]
+pub type RawSock = std::os::unix::io::RawFd;
 
 pub trait FromRawSock {
     fn from_raw(raw_sock: RawSock) -> Self;
@@ -24,9 +24,10 @@ impl FromRawSock for socket2::Socket {
             Self::from_raw_socket(raw_sock)
         }
 
-        #[cfg(target_os = "linux")]
-        use std::os::fd::FromRawFd;
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        use std::os::unix::io::FromRawFd;
+
+        #[cfg(any(target_os = "linux", target_os = "android"))]
         unsafe {
             Self::from_raw_fd(raw_sock)
         }
@@ -43,9 +44,9 @@ impl IntoRawSock for socket2::Socket {
             self.into_raw_socket()
         }
 
-        #[cfg(target_os = "linux")]
-        use std::os::fd::IntoRawFd;
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        use std::os::unix::io::IntoRawFd;
+        #[cfg(any(target_os = "linux", target_os = "android"))]
         unsafe {
             self.into_raw_fd()
         }
