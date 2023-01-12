@@ -112,6 +112,7 @@ pub enum ConnectOnError {
     StageTwoFailed,
 }
 
+#[derive(Debug)]
 pub struct Conn {
     my_adress: SocketAddr,
     addr: SocketAddr,
