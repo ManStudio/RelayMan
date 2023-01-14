@@ -59,12 +59,15 @@ impl Connection {
             return Err(ConnectionError::HostIsNotAlive);
         }
 
+        let local_addr = conn.local_addr().unwrap().as_socket().unwrap().ip();
+
         let pak = Packets::Register(Register {
             client: info.client.clone(),
             public: info.public.clone(),
             name: info.name.clone(),
             other: info.other.clone(),
-            privacy: info.privacy.clone(),
+            privacy: info.privacy,
+            private_adress: local_addr.to_string(),
         });
 
         let mut bytes = pak.to_bytes();

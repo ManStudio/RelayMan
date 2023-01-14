@@ -16,7 +16,7 @@ pub const PORT: u16 = 2120;
 use crate::common::{adress::Adress, packets::*, FromRawSock, IntoRawSock, RawSock};
 use std::{
     mem::MaybeUninit,
-    net::ToSocketAddrs,
+    net::{IpAddr, ToSocketAddrs},
     time::{Duration, SystemTime},
 };
 
@@ -49,6 +49,7 @@ pub struct RegisteredClient {
     pub ports: Vec<u16>,
     pub to_connect: Vec<Connecting>,
     pub privacy: bool,
+    pub private_adress: String,
 }
 
 #[derive(Debug)]
@@ -156,10 +157,8 @@ impl RelayServer {
             if event.key == 0 {
                 self.accept_new();
                 self.poller.modify(self.fd, Event::readable(0)).unwrap();
-            } else {
-                if let Some(fd) = self.process_client(event.key) {
-                    self.poller.modify(fd, Event::readable(event.key)).unwrap();
-                }
+            } else if let Some(fd) = self.process_client(event.key) {
+                self.poller.modify(fd, Event::readable(event.key)).unwrap();
             }
         }
     }
@@ -248,6 +247,7 @@ impl RelayServer {
                             ports: vec![],
                             to_connect: vec![],
                             privacy: register.privacy,
+                            private_adress: register.private_adress,
                         });
 
                         let pak = Packets::RegisterResponse(RegisterResponse {

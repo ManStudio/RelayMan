@@ -82,6 +82,8 @@ impl RelayServer {
             let port2;
             let adress1;
             let adress2;
+            let private_adress1;
+            let private_adress2;
             let addr1;
             let addr2;
 
@@ -90,6 +92,7 @@ impl RelayServer {
                     port1 = rclient.ports.pop();
                     adress1 = client.from.clone();
                     addr1 = rclient.adress.clone();
+                    private_adress1 = rclient.private_adress.clone();
                 } else {
                     continue;
                 }
@@ -102,6 +105,7 @@ impl RelayServer {
                     port2 = rclient.ports.pop();
                     adress2 = client.from.clone();
                     addr2 = rclient.adress.clone();
+                    private_adress2 = rclient.private_adress.clone();
                 } else {
                     continue;
                 }
@@ -156,6 +160,17 @@ impl RelayServer {
                 }
             }
 
+            let adress1 = adress1.as_socket().unwrap().ip();
+            let adress2 = adress2.as_socket().unwrap().ip();
+
+            let has_the_same_ip = adress2 == adress1;
+
+            let (adress1, adress2) = if has_the_same_ip {
+                (private_adress1, private_adress2)
+            } else {
+                (adress1.to_string(), adress2.to_string())
+            };
+
             let time = SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -164,7 +179,7 @@ impl RelayServer {
 
             let pak = ConnectOn {
                 session: conn.0,
-                to: format!("{}:{}", adress2.as_socket().unwrap().ip(), port2),
+                to: format!("{}:{}", adress2, port2),
                 port: port1,
                 adress: addr2,
                 time,
@@ -178,7 +193,7 @@ impl RelayServer {
 
             let pak = ConnectOn {
                 session: conn.1,
-                to: format!("{}:{}", adress1.as_socket().unwrap().ip(), port1),
+                to: format!("{}:{}", adress1, port1),
                 port: port2,
                 adress: addr1,
                 time,

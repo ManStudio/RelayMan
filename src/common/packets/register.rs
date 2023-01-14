@@ -9,4 +9,5 @@ pub struct Register {
     pub name: String,
     pub other: Vec<u8>,
     pub privacy: bool,
+    pub private_adress: String,
 }
