@@ -119,6 +119,7 @@ pub struct Conn {
     port: u16,
     fd: RawSock,
     pub socket: Socket,
+    pub had_upnp: bool,
 }
 
 impl Conn {
@@ -163,9 +164,11 @@ impl std::ops::DerefMut for Conn {
 
 impl Drop for Conn {
     fn drop(&mut self) {
-        if let Ok(upnp_gateway) = igd::search_gateway(igd::SearchOptions::default()) {
-            if let SocketAddr::V4(_) = self.my_adress {
-                let _ = upnp_gateway.remove_port(igd::PortMappingProtocol::UDP, self.port);
+        if self.had_upnp {
+            if let Ok(upnp_gateway) = igd::search_gateway(igd::SearchOptions::default()) {
+                if let SocketAddr::V4(_) = self.my_adress {
+                    let _ = upnp_gateway.remove_port(igd::PortMappingProtocol::UDP, self.port);
+                }
             }
         }
     }
@@ -190,6 +193,31 @@ impl ConnectOn {
             .unwrap()
             .next()
             .unwrap();
+
+        let sock_my_addr = SockAddr::from(my_addr);
+        let sock_addr = SockAddr::from(addr);
+
+        println!("SockAddr: {}", sock_addr.as_socket().unwrap());
+
+        let socket = Socket::new(
+            Domain::for_address(addr),
+            Type::DGRAM,
+            Some(Protocol::from(0)),
+        )
+        .unwrap();
+        let fd = socket.into_raw();
+        let mut conn = Conn {
+            my_adress: my_addr,
+            addr,
+            fd,
+            port: self.port,
+            socket: Socket::from_raw(fd),
+            had_upnp: false,
+        };
+        let Ok(_) = conn.bind(&sock_my_addr) else{return Err(ConnectOnError::CannotBind)};
+        let Ok(_) = conn.set_nonblocking(nonblocking) else {return Err(ConnectOnError::CannotSetNonBlocking)};
+        let _ = conn.set_read_timeout(Some(resend));
+        let _ = conn.set_write_timeout(Some(resend));
 
         'try_to_port_forword: {
             let mut n = natpmp::Natpmp::new().unwrap();
@@ -239,6 +267,7 @@ impl ConnectOn {
                     match res {
                         Ok(_) => {
                             println!("UPNP Open port: {} for: {}", self.port, my_addr);
+                            conn.had_upnp = true;
                             break 'try_to_port_forword;
                         }
                         Err(err) => println!("UPNP Error: {:?}", err),
@@ -248,30 +277,6 @@ impl ConnectOn {
                 println!("No UPNP gateway");
             }
         }
-
-        let sock_my_addr = SockAddr::from(my_addr);
-        let sock_addr = SockAddr::from(addr);
-
-        println!("SockAddr: {}", sock_addr.as_socket().unwrap());
-
-        let socket = Socket::new(
-            Domain::for_address(addr),
-            Type::DGRAM,
-            Some(Protocol::from(0)),
-        )
-        .unwrap();
-        let fd = socket.into_raw();
-        let conn = Conn {
-            my_adress: my_addr,
-            addr,
-            fd,
-            port: self.port,
-            socket: Socket::from_raw(fd),
-        };
-        let Ok(_) = conn.bind(&sock_my_addr) else{return Err(ConnectOnError::CannotBind)};
-        let Ok(_) = conn.set_nonblocking(nonblocking) else {return Err(ConnectOnError::CannotSetNonBlocking)};
-        let _ = conn.set_read_timeout(Some(resend));
-        let _ = conn.set_write_timeout(Some(resend));
 
         while SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -298,7 +303,6 @@ impl ConnectOn {
             }
 
             if let Ok((len, from)) = conn.recv_from(&mut buffer) {
-                println!("Recb {:?}", from);
                 if from.as_socket().unwrap() == sock_addr.as_socket().unwrap() {
                     if unsafe { std::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&buffer[0..len]) }
                         == message
