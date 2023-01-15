@@ -303,14 +303,13 @@ impl ConnectOn {
             }
 
             if let Ok((len, from)) = conn.recv_from(&mut buffer) {
-                if from.as_socket().unwrap() == sock_addr.as_socket().unwrap() {
-                    if unsafe { std::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&buffer[0..len]) }
+                if from.as_socket().unwrap() == sock_addr.as_socket().unwrap()
+                    && unsafe { std::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&buffer[0..len]) }
                         == message
-                    {
-                        conn.connect(&sock_addr).unwrap();
-                        println!("First stage succesful!");
-                        break;
-                    }
+                {
+                    conn.connect(&sock_addr).unwrap();
+                    println!("First stage succesful!");
+                    break;
                 }
             }
 

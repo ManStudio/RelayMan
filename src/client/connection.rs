@@ -108,9 +108,8 @@ impl Connection {
 
     pub fn step(&mut self) {
         if let Some(packet) = self.recv() {
-            match &packet {
-                Packets::SearchResponse(pak) => self.adresses = pak.adresses.clone(),
-                _ => {}
+            if let Packets::SearchResponse(pak) = &packet {
+                self.adresses = pak.adresses.clone()
             };
             self.packets.push(packet)
         }
@@ -430,21 +429,19 @@ fn info_fn_get(conn: Box<dyn TConnection>, packet: Packets) -> Option<Connection
     if let Packets::InfoRequest(packet) = packet {
         conn.write().unwrap().packets.retain(|pak| {
             if let Packets::Info(pak) = pak {
-                if pak.adress == packet.adress {
-                    if res.is_none() {
-                        if pak.has {
-                            res = Some(Some(ConnectionInfo {
-                                client: pak.client.clone(),
-                                name: pak.client.clone(),
-                                public: packet.adress.clone(),
-                                other: pak.other.clone(),
-                                privacy: false,
-                            }));
-                        } else {
-                            res = Some(None)
-                        }
-                        return false;
+                if pak.adress == packet.adress && res.is_none() {
+                    if pak.has {
+                        res = Some(Some(ConnectionInfo {
+                            client: pak.client.clone(),
+                            name: pak.client.clone(),
+                            public: packet.adress.clone(),
+                            other: pak.other.clone(),
+                            privacy: false,
+                        }));
+                    } else {
+                        res = Some(None)
                     }
+                    return false;
                 }
             }
             true
@@ -481,16 +478,14 @@ fn request_fn_get(conn: Box<dyn TConnection>, packet: Packets) -> response::NewR
     if let Packets::Request(packet) = packet {
         conn.write().unwrap().packets.retain(|pak| {
             if let Packets::NewRequestResponse(pak) = pak {
-                if pak.from == packet.to {
-                    if res.is_none() {
-                        res = Some(response::NewRequestResponse {
-                            connection: conn.c(),
-                            from: pak.from.clone(),
-                            accept: pak.accepted,
-                            secret: pak.secret.clone(),
-                        });
-                        return false;
-                    }
+                if pak.from == packet.to && res.is_none() {
+                    res = Some(response::NewRequestResponse {
+                        connection: conn.c(),
+                        from: pak.from.clone(),
+                        accept: pak.accepted,
+                        secret: pak.secret.clone(),
+                    });
+                    return false;
                 }
             }
             true
@@ -530,15 +525,13 @@ fn request_response_fn_get(
     if let Packets::Request(packet) = packet {
         conn.write().unwrap().packets.retain(|pak| {
             if let Packets::NewRequestFinal(pak) = pak {
-                if pak.from == packet.to {
-                    if res.is_none() {
-                        res = Some(response::NewRequestFinal {
-                            connection: conn.c(),
-                            from: pak.from.clone(),
-                            accept: pak.accepted,
-                        });
-                        return false;
-                    }
+                if pak.from == packet.to && res.is_none() {
+                    res = Some(response::NewRequestFinal {
+                        connection: conn.c(),
+                        from: pak.from.clone(),
+                        accept: pak.accepted,
+                    });
+                    return false;
                 }
             }
             true
@@ -575,17 +568,15 @@ fn request_final_fn_get(conn: Box<dyn TConnection>, packet: Packets) -> response
     if let Packets::RequestFinal(packet) = packet {
         conn.write().unwrap().packets.retain(|pak| {
             if let Packets::ConnectOn(pak) = pak {
-                if pak.adress == packet.to {
-                    if res.is_none() {
-                        res = Some(response::ConnectOn {
-                            connection: conn.c(),
-                            adress: pak.adress.clone(),
-                            to: pak.to.clone(),
-                            port: pak.port,
-                            time: pak.time,
-                        });
-                        return false;
-                    }
+                if pak.adress == packet.to && res.is_none() {
+                    res = Some(response::ConnectOn {
+                        connection: conn.c(),
+                        adress: pak.adress.clone(),
+                        to: pak.to.clone(),
+                        port: pak.port,
+                        time: pak.time,
+                    });
+                    return false;
                 }
             }
             true

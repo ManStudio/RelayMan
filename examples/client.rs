@@ -57,12 +57,10 @@ fn main() {
 
     let search = client.search(Search::default()).get();
     for adress in search {
-        if adress != client.get(0).unwrap().adress() {
-            if !connecting_to.contains(&adress) {
-                connecting_to.push(adress.clone());
-                println!("Cannecting to: {:?}", adress);
-                client.get(0).unwrap().request(&adress, String::new());
-            }
+        if adress != client.get(0).unwrap().adress() && !connecting_to.contains(&adress) {
+            connecting_to.push(adress.clone());
+            println!("Cannecting to: {:?}", adress);
+            client.get(0).unwrap().request(&adress, String::new());
         }
     }
 

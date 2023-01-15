@@ -12,15 +12,10 @@ impl RelayServer {
 
         for client in self.clients.iter() {
             if let ClientStage::Registered(rclient) = &client.stage {
-                if !rclient.to_connect.is_empty() {
-                    if !rclient.ports.is_empty() {
-                        for to_conn in rclient.to_connect.iter() {
-                            match to_conn {
-                                Connecting::Finishing(session, time_offset) => {
-                                    connect.push((client.session, *session, *time_offset));
-                                }
-                                _ => {}
-                            }
+                if !rclient.to_connect.is_empty() && !rclient.ports.is_empty() {
+                    for to_conn in rclient.to_connect.iter() {
+                        if let Connecting::Finishing(session, time_offset) = to_conn {
+                            connect.push((client.session, *session, *time_offset));
                         }
                     }
                 }

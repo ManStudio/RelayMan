@@ -28,7 +28,7 @@ impl RelayClient {
     pub fn new(info: ConnectionInfo, relays: Vec<String>) -> Result<Self, RelayClientError> {
         let mut connection_errors = Vec::new();
         use RelayClientError::*;
-        if relays.len() == 0 {
+        if relays.is_empty() {
             return Err(NoRelays);
         }
 
@@ -44,7 +44,7 @@ impl RelayClient {
             }
         }
 
-        if connections.len() == 0 {
+        if connections.is_empty() {
             println!("Errors: {:?}", connection_errors);
             return Err(NoConnections);
         }

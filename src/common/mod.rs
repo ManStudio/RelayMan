@@ -47,8 +47,6 @@ impl IntoRawSock for socket2::Socket {
         #[cfg(any(target_os = "linux", target_os = "android"))]
         use std::os::unix::io::IntoRawFd;
         #[cfg(any(target_os = "linux", target_os = "android"))]
-        unsafe {
-            self.into_raw_fd()
-        }
+        self.into_raw_fd()
     }
 }
