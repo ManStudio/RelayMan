@@ -16,7 +16,7 @@ pub const PORT: u16 = 2120;
 use crate::common::{adress::Adress, packets::*, FromRawSock, IntoRawSock, RawSock};
 use std::{
     mem::MaybeUninit,
-    net::{IpAddr, ToSocketAddrs},
+    net::ToSocketAddrs,
     time::{Duration, SystemTime},
 };
 
@@ -91,9 +91,9 @@ impl RelayServer {
         )
         .unwrap();
 
-        let _ = conn.set_nonblocking(true).unwrap();
-        let _ = conn.bind(&adress_sock).unwrap();
-        let _ = conn.listen(128).unwrap();
+        conn.set_nonblocking(true).unwrap();
+        conn.bind(&adress_sock).unwrap();
+        conn.listen(128).unwrap();
 
         let Ok(poller) = Poller::new() else{
             println!("Cannot create poller!");
@@ -102,7 +102,7 @@ impl RelayServer {
 
         let fd = conn.into_raw();
         poller.add(fd, Event::readable(0)).unwrap();
-        let conn = unsafe { Socket::from_raw(fd) };
+        let conn = Socket::from_raw(fd);
 
         let mut buffer = Vec::new();
         buffer.resize(1024, MaybeUninit::new(0));
@@ -169,7 +169,7 @@ impl RelayServer {
             let fd = conn.into_raw();
             let session = self.create_session();
             self.poller.add(fd, Event::readable(session)).unwrap();
-            let conn = unsafe { Socket::from_raw(fd) };
+            let conn = Socket::from_raw(fd);
             let _ = conn.set_recv_buffer_size(1024);
             let _ = conn.set_send_buffer_size(1024);
 
@@ -221,7 +221,7 @@ impl RelayServer {
 
             let buffer: &[u8] = unsafe { std::mem::transmute(&client.buffer[0..len]) };
             let mut buffer = buffer.to_owned();
-            while buffer.len() > 0 {
+            while !buffer.is_empty() {
                 let Some(packet) = Packets::from_bytes(&mut buffer)else{return fd};
                 match packet {
                     Packets::Register(register) => {
