@@ -79,8 +79,13 @@ pub struct RelayServer {
     pub client_timeout: Duration,
 }
 
+#[derive(Debug)]
+pub enum RelayServerError {
+    CannotCreatePoller,
+}
+
 impl RelayServer {
-    pub fn new(ip: impl Into<String>, client_timeout: Duration) -> Result<Self, ()> {
+    pub fn new(ip: impl Into<String>, client_timeout: Duration) -> Result<Self, RelayServerError> {
         let adress = format!("{}:{}", ip.into(), PORT);
         let adress = adress.to_socket_addrs().unwrap().next().unwrap();
         let adress_sock = SockAddr::from(adress);
@@ -97,7 +102,7 @@ impl RelayServer {
 
         let Ok(poller) = Poller::new() else{
             println!("Cannot create poller!");
-            return Err(())
+            return Err(RelayServerError::CannotCreatePoller)
         };
 
         let fd = conn.into_raw();

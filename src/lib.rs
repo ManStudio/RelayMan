@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(clippy::borrowed_box)]
 
 #[cfg(feature = "client")]
 pub mod client;

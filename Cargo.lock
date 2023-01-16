@@ -283,7 +283,7 @@ dependencies = [
 
 [[package]]
 name = "relay-man"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "bytes-kman",
  "igd",

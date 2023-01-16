@@ -24,6 +24,8 @@ pub enum RelayClientError {
     NoConnections,
 }
 
+pub type SearchResponse = Vec<Response<Box<dyn TConnection>, response::SearchResponse>>;
+
 impl RelayClient {
     pub fn new(info: ConnectionInfo, relays: Vec<String>) -> Result<Self, RelayClientError> {
         let mut connection_errors = Vec::new();
@@ -72,10 +74,7 @@ impl RelayClient {
         indexs
     }
 
-    pub fn search(
-        &self,
-        search: Search,
-    ) -> Response<Vec<Response<Box<dyn TConnection>, response::SearchResponse>>, Vec<Adress>> {
+    pub fn search(&self, search: Search) -> Response<SearchResponse, Vec<Adress>> {
         let mut responses = Vec::new();
         for conn in self.connections.iter() {
             responses.push(conn.search(search.clone()))
