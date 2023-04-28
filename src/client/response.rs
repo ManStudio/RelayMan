@@ -57,8 +57,8 @@ pub struct NewRequestResponse {
 }
 
 impl NewRequestResponse {
-    pub fn add_port(&self, port: u16) {
-        self.connection.add_port(port)
+    pub fn add_socket(&self, socket: &Socket) -> RegisterResponse {
+        self.connection.add_socket(socket)
     }
 
     /// `time_offset` should be in nanosecconds
@@ -79,8 +79,8 @@ pub struct NewRequestFinal {
 }
 
 impl NewRequestFinal {
-    pub fn add_port(&self, port: u16) {
-        self.connection.add_port(port)
+    pub fn add_socket(&self, socket: &Socket) -> RegisterResponse {
+        self.connection.add_socket(socket)
     }
 }
 
@@ -104,6 +104,12 @@ impl std::fmt::Debug for ConnectOn {
 }
 
 #[derive(Debug)]
+pub enum RegisterResponse {
+    Success { port: u16 },
+    Error,
+}
+
+#[derive(Debug)]
 pub enum ConnectOnError {
     CannotBind,
     CannotSetNonBlocking,
@@ -114,12 +120,10 @@ pub enum ConnectOnError {
 
 #[derive(Debug)]
 pub struct Conn {
-    my_adress: SocketAddr,
-    addr: SocketAddr,
-    port: u16,
-    fd: RawSock,
+    pub port: u16,
+    pub fd: RawSock,
     pub socket: Socket,
-    pub had_upnp: bool,
+    pub addr: SocketAddr,
 }
 
 impl Conn {
@@ -129,10 +133,6 @@ impl Conn {
 
     pub fn addr(&self) -> SocketAddr {
         self.addr
-    }
-
-    pub fn my_addr(&self) -> SocketAddr {
-        self.my_adress
     }
 
     pub fn port(&self) -> u16 {
@@ -168,44 +168,27 @@ impl ConnectOn {
         self,
         timeout: Duration,
         resend: Duration,
-        nonblocking: bool,
+        socket: Socket,
     ) -> Result<Conn, ConnectOnError> {
         if timeout < resend {
             return Err(ConnectOnError::TimoutIsLesTheResend);
         }
 
-        let local_adress = local_ip_address::local_ip().unwrap();
         let addr = self.to.to_socket_addrs().unwrap().next().unwrap();
-        let my_addr = format!("{}:{}", local_adress, self.port)
-            .to_socket_addrs()
-            .unwrap()
-            .next()
-            .unwrap();
-
-        let sock_my_addr = SockAddr::from(my_addr);
         let sock_addr = SockAddr::from(addr);
 
-        println!("SockAddr: {}", sock_addr.as_socket().unwrap());
-
-        let socket = Socket::new(
-            Domain::for_address(addr),
-            Type::DGRAM,
-            Some(Protocol::from(0)),
-        )
-        .unwrap();
         let fd = socket.into_raw();
         let mut conn = Conn {
-            my_adress: my_addr,
-            addr,
             fd,
             port: self.port,
             socket: Socket::from_raw(fd),
-            had_upnp: false,
+            addr,
         };
-        let Ok(_) = conn.bind(&sock_my_addr) else{return Err(ConnectOnError::CannotBind)};
-        let Ok(_) = conn.set_nonblocking(nonblocking) else {return Err(ConnectOnError::CannotSetNonBlocking)};
+
+        let Ok(_) = conn.set_nonblocking(true) else {return Err(ConnectOnError::CannotSetNonBlocking)};
         let _ = conn.set_read_timeout(Some(resend));
         let _ = conn.set_write_timeout(Some(resend));
+        conn.set_ttl(3600);
 
         while SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -222,13 +205,9 @@ impl ConnectOn {
         let mut buffer = [MaybeUninit::new(0); 4];
         let message = [1, 4, 21, 6];
 
-        let mut ttl = 2;
-
-        conn.set_ttl(2);
         let _ = conn.send_to(&message, &sock_addr);
 
         loop {
-            conn.set_ttl(2);
             if time.elapsed().unwrap() > timeout {
                 return Err(ConnectOnError::StageOneFailed);
             }
@@ -247,7 +226,6 @@ impl ConnectOn {
             if time_send.elapsed().unwrap() > resend {
                 time_send = SystemTime::now();
                 let _ = conn.send_to(&message, &sock_addr);
-                ttl *= 2;
             }
         }
 

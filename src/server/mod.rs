@@ -215,56 +215,101 @@ impl RelayServer {
 
         let Some(index) = index else{return fd};
 
-        if let Some(client) = self.clients.get_mut(index) {
-            let Ok(len) = client.conn.recv(&mut client.buffer)else {
+        loop {
+            if let Some(client) = self.clients.get_mut(index) {
+                let Ok(len) = client.conn.recv(&mut client.buffer)else {
                 client.last_message = SystemTime::UNIX_EPOCH;
                 return None};
-            if len == 0 {
-                client.last_message = SystemTime::UNIX_EPOCH;
-                return None;
-            }
+                if len == 0 {
+                    client.last_message = SystemTime::UNIX_EPOCH;
+                    return None;
+                }
 
-            let buffer: &[u8] = unsafe { std::mem::transmute(&client.buffer[0..len]) };
-            let mut buffer = buffer.to_owned();
-            while !buffer.is_empty() {
+                let buffer: &[u8] = unsafe { std::mem::transmute(&client.buffer[0..len]) };
+                let mut buffer = buffer.to_owned();
+                if buffer.is_empty() {
+                    return fd;
+                };
                 let Some(packet) = Packets::from_bytes(&mut buffer)else{return fd};
                 match packet {
-                    Packets::Register(register) => {
-                        if used_adresses.contains(&register.public) {
-                            let pak = Packets::RegisterResponse(RegisterResponse {
-                                accepted: false,
-                                session: 0,
+                    Packets::Register(register) => match register {
+                        Register::Client {
+                            client: client_name,
+                            public,
+                            name,
+                            other,
+                            privacy,
+                            private_adress,
+                        } => {
+                            if used_adresses.contains(&public) {
+                                let pak = Packets::RegisterResponse(RegisterResponse::Client {
+                                    accepted: false,
+                                    session: 0,
+                                });
+                                let mut bytes = pak.to_bytes();
+                                bytes.reverse();
+
+                                let _ = client.conn.send(&bytes);
+                                return fd;
+                            }
+
+                            // Adress is valid
+
+                            client.stage = ClientStage::Registered(RegisteredClient {
+                                name,
+                                client: client_name,
+                                other,
+                                adress: public,
+                                ports: vec![],
+                                to_connect: vec![],
+                                privacy,
+                                private_adress,
                             });
+
+                            let pak = Packets::RegisterResponse(RegisterResponse::Client {
+                                accepted: true,
+                                session: client.session,
+                            });
+
                             let mut bytes = pak.to_bytes();
                             bytes.reverse();
 
                             let _ = client.conn.send(&bytes);
-                            return fd;
                         }
+                        Register::Port { session } => {
+                            let mut pak = Packets::RegisterResponse(RegisterResponse::Client {
+                                accepted: false,
+                                session,
+                            });
+                            let Ok(conn) = client.conn.try_clone() else {break};
+                            let from = client.from.clone();
+                            for parent in self.clients.iter_mut() {
+                                if parent.session == session {
+                                    if let Some(ipv4) = from.as_socket_ipv4() {
+                                        let Some(from_ipv4) = parent.from.as_socket_ipv4() else{break};
+                                        if ipv4.ip() != from_ipv4.ip() {
+                                            break;
+                                        };
+                                        if let ClientStage::Registered(registered) =
+                                            &mut parent.stage
+                                        {
+                                            registered.ports.push(ipv4.port());
+                                            pak =
+                                                Packets::RegisterResponse(RegisterResponse::Port {
+                                                    port: ipv4.port(),
+                                                });
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
 
-                        // Adress is valid
+                            let mut bytes = pak.to_bytes();
+                            bytes.reverse();
 
-                        client.stage = ClientStage::Registered(RegisteredClient {
-                            name: register.name,
-                            client: register.client,
-                            other: register.other,
-                            adress: register.public,
-                            ports: vec![],
-                            to_connect: vec![],
-                            privacy: register.privacy,
-                            private_adress: register.private_adress,
-                        });
-
-                        let pak = Packets::RegisterResponse(RegisterResponse {
-                            accepted: true,
-                            session: client.session,
-                        });
-
-                        let mut bytes = pak.to_bytes();
-                        bytes.reverse();
-
-                        let _ = client.conn.send(&bytes);
-                    }
+                            let _ = conn.send(&bytes);
+                        }
+                    },
                     Packets::UnRegister(session) => {
                         if client.session == session.session {
                             client.last_message = std::time::UNIX_EPOCH;
@@ -291,14 +336,6 @@ impl RelayServer {
                     Packets::RequestResponse(request_response) => {
                         if request_response.session == client.session {
                             to_request_response.push(request_response);
-                            client.last_message = SystemTime::now();
-                        }
-                    }
-                    Packets::Avalibile(avalibile) => {
-                        if avalibile.session == client.session {
-                            if let ClientStage::Registered(client) = &mut client.stage {
-                                client.ports.push(avalibile.port);
-                            }
                             client.last_message = SystemTime::now();
                         }
                     }

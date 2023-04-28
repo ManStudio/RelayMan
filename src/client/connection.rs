@@ -1,6 +1,6 @@
 use std::{
     mem::MaybeUninit,
-    net::ToSocketAddrs,
+    net::{SocketAddr, ToSocketAddrs},
     sync::{Arc, LockResult, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::{Duration, SystemTime},
 };
@@ -11,7 +11,8 @@ use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use crate::common::{
     adress::Adress,
     packets::{
-        Avalibile, InfoRequest, Packets, Register, Request, RequestFinal, RequestResponse, Search,
+        InfoRequest, Packets, Register, RegisterResponse, Request, RequestFinal, RequestResponse,
+        Search,
     },
 };
 
@@ -28,6 +29,7 @@ pub enum ConnectionError {
 pub struct Connection {
     pub session: usize,
     pub conn: Socket,
+    pub adress: SocketAddr,
     pub info: ConnectionInfo,
     pub last_packet: SystemTime,
     pub packets: Vec<Packets>,
@@ -61,7 +63,7 @@ impl Connection {
 
         let local_addr = conn.local_addr().unwrap().as_socket().unwrap().ip();
 
-        let pak = Packets::Register(Register {
+        let pak = Packets::Register(Register::Client {
             client: info.client.clone(),
             public: info.public.clone(),
             name: info.name.clone(),
@@ -88,7 +90,10 @@ impl Connection {
         let Some(packet) = Packets::from_bytes(&mut buffer) else{return Err(ConnectionError::InvalidInfo)};
         let Packets::RegisterResponse(res) = packet else {return Err(ConnectionError::InvalidInfo)};
 
-        if !res.accepted {
+        let RegisterResponse::Client{ accepted, session } = res else {
+            return Err(ConnectionError::InvalidAdress);
+        };
+        if !accepted {
             return Err(ConnectionError::InvalidAdress);
         }
 
@@ -97,12 +102,13 @@ impl Connection {
         let _ = conn.set_send_buffer_size(1024);
 
         Ok(Self {
-            session: res.session,
+            session,
             conn,
             info,
             last_packet: SystemTime::now(),
             packets: Vec::new(),
             adresses: Vec::new(),
+            adress,
         })
     }
 
@@ -137,7 +143,6 @@ impl Connection {
             Packets::InfoRequest(pak) => pak.session = self.session,
             Packets::Request(pak) => pak.session = self.session,
             Packets::RequestResponse(pak) => pak.session = self.session,
-            Packets::Avalibile(pak) => pak.session = self.session,
             Packets::RequestFinal(pak) => pak.session = self.session,
             _ => {}
         }
@@ -188,7 +193,7 @@ pub trait TConnection {
         accept: bool,
         time_offset: Option<u128>,
     ) -> Response<Box<dyn TConnection>, response::ConnectOn>;
-    fn add_port(&self, port: u16);
+    fn add_socket(&self, socket: &Socket) -> response::RegisterResponse;
 
     fn adress(&self) -> Adress;
 
@@ -303,9 +308,32 @@ impl TConnection for Arc<RwLock<Connection>> {
         }
     }
 
-    fn add_port(&self, port: u16) {
-        let pak = Packets::Avalibile(Avalibile { session: 0, port });
-        self.write().unwrap().send(pak);
+    fn add_socket(&self, socket: &Socket) -> response::RegisterResponse {
+        let session = self.read().unwrap().session;
+        let pak = Packets::Register(Register::Port { session });
+        let mut bytes = pak.to_bytes();
+        bytes.reverse();
+        let addr = self.read().unwrap().adress.clone();
+        socket.send_to(&bytes, &addr.into());
+
+        socket.set_nonblocking(false);
+        let mut buffer = [MaybeUninit::uninit(); 4096];
+        if let Ok(len) = socket.recv(&mut buffer) {
+            let mut buffer = buffer[0..len].to_vec();
+            let mut buffer = unsafe { std::mem::transmute(buffer) };
+            let Some(packet) = Packets::from_bytes(&mut buffer)else{return response::RegisterResponse::Error};
+            if let Packets::RegisterResponse(res) = packet {
+                match res {
+                    RegisterResponse::Client { accepted, session } => {
+                        return response::RegisterResponse::Error
+                    }
+                    RegisterResponse::Port { port } => {
+                        return response::RegisterResponse::Success { port }
+                    }
+                }
+            }
+        }
+        response::RegisterResponse::Error
     }
 
     fn adress(&self) -> Adress {

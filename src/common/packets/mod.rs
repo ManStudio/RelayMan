@@ -1,6 +1,5 @@
 use bytes_kman::prelude::*;
 
-mod avalibile;
 mod connect_on;
 mod info;
 mod info_request;
@@ -14,9 +13,8 @@ mod search_response;
 mod unregister;
 
 pub use self::{
-    avalibile::*, connect_on::*, info::*, info_request::*, register::*, register_response::*,
-    request::*, request_final::*, request_response::*, search::*, search_response::*,
-    unregister::*,
+    connect_on::*, info::*, info_request::*, register::*, register_response::*, request::*,
+    request_final::*, request_response::*, search::*, search_response::*, unregister::*,
 };
 
 #[derive(Bytes, Clone, Debug)]
@@ -34,7 +32,6 @@ pub enum Packets {
     NewRequestResponse(NewRequestResponse),
     RequestFinal(RequestFinal),
     NewRequestFinal(NewRequestFinal),
-    Avalibile(Avalibile),
     ConnectOn(ConnectOn),
     Tick { session: usize },
 }

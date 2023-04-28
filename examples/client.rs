@@ -8,6 +8,7 @@ use relay_man::{
         packets::{Search, SearchType},
     },
 };
+use socket2::{Domain, Socket};
 
 fn main() {
     println!("Starting client");
@@ -52,7 +53,7 @@ fn main() {
     let mut connections = Vec::new();
     let mut thread: Option<JoinHandle<(Adress, Conn)>> = None;
 
-    let mut port = rand::thread_rng().gen_range(2120..50000);
+    let socket = Socket::new(Domain::IPV4, socket2::Type::DGRAM, None).unwrap();
     let mut connecting_to = Vec::new();
 
     let search = client.search(Search::default()).get();
@@ -92,23 +93,36 @@ fn main() {
                 }
                 relay_man::client::response::RequestStage::NewRequestResponse(new) => {
                     println!("Res from: {:?}", new.from);
-                    println!("Add port: {}", port);
-                    new.add_port(port);
-                    port += 1;
+                    let res = new.add_socket(&socket);
+                    match res {
+                        relay_man::client::response::RegisterResponse::Success { port } => {
+                            println!("Connection on port: {port}")
+                        }
+                        relay_man::client::response::RegisterResponse::Error => {
+                            panic!("Some thing went rong!")
+                        }
+                    }
                     new.accept(true, Some(Duration::from_secs(2).as_nanos()));
                 }
                 relay_man::client::response::RequestStage::NewRequestFinal(new) => {
                     println!("Final from: {:?}", new.from);
-                    println!("Add port: {}", port);
-                    new.add_port(port);
-                    port += 1;
+                    let res = new.add_socket(&socket);
+                    match res {
+                        relay_man::client::response::RegisterResponse::Success { port } => {
+                            println!("Connection on port: {port}")
+                        }
+                        relay_man::client::response::RegisterResponse::Error => {
+                            panic!("Some thing went rong!")
+                        }
+                    }
                 }
                 relay_man::client::response::RequestStage::ConnectOn(new) => {
                     println!("ConnectOn: {:?}", new);
+                    let socket = socket.try_clone().unwrap();
                     thread = Some(std::thread::spawn(|| {
                         (
                             new.adress.clone(),
-                            new.connect(Duration::from_secs(5), Duration::from_millis(100), true)
+                            new.connect(Duration::from_secs(5), Duration::from_millis(100), socket)
                                 .unwrap(),
                         )
                     }));
