@@ -12,6 +12,7 @@ use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
 // RelayServer allways should be on this port
 pub const PORT: u16 = 2120;
+pub const UDP_KEY: usize = usize::MAX - 1;
 
 use crate::common::{adress::Adress, packets::*, FromRawSock, IntoRawSock, RawSock};
 use std::{
@@ -75,6 +76,8 @@ pub struct RelayServer {
     pub poller: Poller,
     pub conn: Socket,
     pub fd: RawSock,
+    pub conn_udp: Socket,
+    pub fd_udp: RawSock,
     pub buffer: Vec<MaybeUninit<u8>>,
     pub client_timeout: Duration,
 }
@@ -95,10 +98,14 @@ impl RelayServer {
             Some(Protocol::TCP),
         )
         .unwrap();
+        let conn_udp = Socket::new(Domain::for_address(adress), Type::DGRAM, None).unwrap();
 
         conn.set_nonblocking(true).unwrap();
         conn.bind(&adress_sock).unwrap();
         conn.listen(128).unwrap();
+
+        conn_udp.set_nonblocking(true).unwrap();
+        conn_udp.bind(&adress_sock).unwrap();
 
         let Ok(poller) = Poller::new() else{
             println!("Cannot create poller!");
@@ -106,8 +113,12 @@ impl RelayServer {
         };
 
         let fd = conn.into_raw();
+        let fd_udp = conn_udp.into_raw();
         poller.add(fd, Event::readable(0)).unwrap();
+        poller.add(fd_udp, Event::readable(UDP_KEY)).unwrap();
+
         let conn = Socket::from_raw(fd);
+        let conn_udp = Socket::from_raw(fd_udp);
 
         let mut buffer = Vec::new();
         buffer.resize(1024, MaybeUninit::new(0));
@@ -119,6 +130,8 @@ impl RelayServer {
             fd,
             client_timeout,
             conn,
+            conn_udp,
+            fd_udp,
         })
     }
 
@@ -158,12 +171,66 @@ impl RelayServer {
         let mut events = Vec::new();
         let Ok(_) = self.poller.wait(&mut events, None) else {return};
 
-        for event in events {
-            if event.key == 0 {
-                self.accept_new();
-                self.poller.modify(self.fd, Event::readable(0)).unwrap();
-            } else if let Some(fd) = self.process_client(event.key) {
-                self.poller.modify(fd, Event::readable(event.key)).unwrap();
+        'main: for event in events {
+            match event.key {
+                0 => {
+                    self.accept_new();
+                    self.poller.modify(self.fd, Event::readable(0)).unwrap();
+                }
+                UDP_KEY => {
+                    self.poller
+                        .modify(self.fd_udp, Event::readable(event.key))
+                        .unwrap();
+
+                    let mut buffer = [MaybeUninit::uninit(); 1024];
+                    if let Ok((len, from)) = self.conn_udp.recv_from(&mut buffer) {
+                        let buffer = buffer[0..len].to_vec();
+                        let mut buffer: Vec<u8> = unsafe { std::mem::transmute(buffer) };
+                        if let Some(Packets::Register(Register::Port { session })) =
+                            Packets::from_bytes(&mut buffer)
+                        {
+                            for client in self.clients.iter_mut() {
+                                if client.session == session {
+                                    let mut port = None;
+                                    if let Some(ipv4) = from.as_socket_ipv4() {
+                                        port = Some(ipv4.port());
+                                    }
+
+                                    if let Some(ipv6) = from.as_socket_ipv6() {
+                                        port = Some(ipv6.port())
+                                    }
+
+                                    if let Some(port) = port {
+                                        if let ClientStage::Registered(client) = &mut client.stage {
+                                            client.ports.push(port);
+                                            let pak =
+                                                Packets::RegisterResponse(RegisterResponse::Port {
+                                                    port,
+                                                });
+                                            let mut bytes = pak.to_bytes();
+                                            bytes.reverse();
+                                            self.conn_udp.send_to(&mut bytes, &from);
+                                            continue 'main;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        let pak = Packets::RegisterResponse(RegisterResponse::Client {
+                            accepted: false,
+                            session: 0,
+                        });
+                        let mut bytes = pak.to_bytes();
+                        bytes.reverse();
+                        self.conn_udp.send_to(&mut bytes, &from);
+                    }
+                }
+                _ => {
+                    if let Some(fd) = self.process_client(event.key) {
+                        self.poller.modify(fd, Event::readable(event.key)).unwrap();
+                    }
+                }
             }
         }
     }
