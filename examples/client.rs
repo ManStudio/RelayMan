@@ -53,7 +53,7 @@ fn main() {
     let mut connections = Vec::new();
     let mut thread: Option<JoinHandle<(Adress, Conn)>> = None;
 
-    let socket = Socket::new(Domain::IPV4, socket2::Type::STREAM, None).unwrap();
+    let socket = Socket::new(Domain::IPV4, socket2::Type::DGRAM, None).unwrap();
     socket.bind(&SockAddr::from(
         "0.0.0.0:0".to_socket_addrs().unwrap().next().unwrap(),
     ));

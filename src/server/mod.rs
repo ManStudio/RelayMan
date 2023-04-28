@@ -189,6 +189,7 @@ impl RelayServer {
                         if let Some(Packets::Register(Register::Port { session })) =
                             Packets::from_bytes(&mut buffer)
                         {
+                            log::trace!("UDP From: {from:?}, Packets::Register(Register::Port{{ session: {session} }})");
                             for client in self.clients.iter_mut() {
                                 if client.session == session {
                                     let mut port = None;
@@ -207,6 +208,7 @@ impl RelayServer {
                                                 Packets::RegisterResponse(RegisterResponse::Port {
                                                     port,
                                                 });
+                                            log::trace!("UDP Sent: {from:?}, {pak:?}");
                                             let mut bytes = pak.to_bytes();
                                             bytes.reverse();
                                             self.conn_udp.send_to(&mut bytes, &from);
@@ -221,6 +223,8 @@ impl RelayServer {
                             accepted: false,
                             session: 0,
                         });
+
+                        log::trace!("UDP Sent: {from:?}, {pak:?}");
                         let mut bytes = pak.to_bytes();
                         bytes.reverse();
                         self.conn_udp.send_to(&mut bytes, &from);
@@ -249,11 +253,13 @@ impl RelayServer {
                 session,
                 fd,
                 conn,
-                from,
+                from: from.clone(),
                 stage: ClientStage::NotRegistered,
                 last_message: SystemTime::now(),
                 buffer: vec![MaybeUninit::new(0); 1024],
             };
+
+            log::trace!("Accept: {from:?}, Client: {client:?}");
 
             self.clients.push(client);
         }
@@ -306,6 +312,7 @@ impl RelayServer {
                     break;
                 };
                 let Some(packet) = Packets::from_bytes(&mut buffer)else{return fd};
+                log::trace!("From: {:?}, packet: {packet:?}", client.from);
                 match packet {
                     Packets::Register(register) => match register {
                         Register::Client {
