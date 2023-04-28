@@ -228,7 +228,7 @@ impl RelayServer {
                 let buffer: &[u8] = unsafe { std::mem::transmute(&client.buffer[0..len]) };
                 let mut buffer = buffer.to_owned();
                 if buffer.is_empty() {
-                    return fd;
+                    break;
                 };
                 let Some(packet) = Packets::from_bytes(&mut buffer)else{return fd};
                 match packet {
