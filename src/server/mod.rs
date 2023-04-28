@@ -215,18 +215,26 @@ impl RelayServer {
 
         let Some(index) = index else{return fd};
 
+        let mut buffer;
+
+        if let Some(client) = self.clients.get_mut(index) {
+            let Ok(len) = client.conn.recv(&mut client.buffer) else {
+                    client.last_message = SystemTime::UNIX_EPOCH;
+                    return None
+                };
+            if len == 0 {
+                client.last_message = SystemTime::UNIX_EPOCH;
+                return None;
+            }
+
+            let tmp_buffer: &[u8] = unsafe { std::mem::transmute(&client.buffer[0..len]) };
+            buffer = tmp_buffer.to_owned();
+        } else {
+            return fd;
+        }
+
         loop {
             if let Some(client) = self.clients.get_mut(index) {
-                let Ok(len) = client.conn.recv(&mut client.buffer)else {
-                client.last_message = SystemTime::UNIX_EPOCH;
-                return None};
-                if len == 0 {
-                    client.last_message = SystemTime::UNIX_EPOCH;
-                    return None;
-                }
-
-                let buffer: &[u8] = unsafe { std::mem::transmute(&client.buffer[0..len]) };
-                let mut buffer = buffer.to_owned();
                 if buffer.is_empty() {
                     break;
                 };
@@ -273,6 +281,7 @@ impl RelayServer {
 
                             let mut bytes = pak.to_bytes();
                             bytes.reverse();
+                            client.last_message = SystemTime::now();
 
                             let _ = client.conn.send(&bytes);
                         }

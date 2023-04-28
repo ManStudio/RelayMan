@@ -21,7 +21,7 @@ name = "server"
 name = "client"
 
 [dependencies]
-bytes-kman = "0.1.7"
+bytes-kman = "0.1"
 local-ip-address = "0.5.0"
 polling = "2.5.2"
 rand = "0.8.5"
