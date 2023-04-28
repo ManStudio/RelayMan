@@ -1,4 +1,4 @@
-use std::{mem::MaybeUninit, thread::JoinHandle, time::Duration};
+use std::{mem::MaybeUninit, net::ToSocketAddrs, thread::JoinHandle, time::Duration};
 
 use rand::{random, Rng};
 use relay_man::{
@@ -8,7 +8,7 @@ use relay_man::{
         packets::{Search, SearchType},
     },
 };
-use socket2::{Domain, Socket};
+use socket2::{Domain, SockAddr, Socket};
 
 fn main() {
     println!("Starting client");
@@ -53,7 +53,10 @@ fn main() {
     let mut connections = Vec::new();
     let mut thread: Option<JoinHandle<(Adress, Conn)>> = None;
 
-    let socket = Socket::new(Domain::IPV4, socket2::Type::DGRAM, None).unwrap();
+    let socket = Socket::new(Domain::IPV4, socket2::Type::STREAM, None).unwrap();
+    socket.bind(&SockAddr::from(
+        "0.0.0.0:0".to_socket_addrs().unwrap().next().unwrap(),
+    ));
     let mut connecting_to = Vec::new();
 
     let search = client.search(Search::default()).get();

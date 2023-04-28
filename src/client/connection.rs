@@ -314,11 +314,14 @@ impl TConnection for Arc<RwLock<Connection>> {
         let mut bytes = pak.to_bytes();
         bytes.reverse();
         let addr = self.read().unwrap().adress.clone();
+        println!("Adress: {}", addr);
+        socket.connect(&addr.into());
         socket.send_to(&bytes, &addr.into());
 
         socket.set_nonblocking(false);
         let mut buffer = [MaybeUninit::uninit(); 4096];
         if let Ok(len) = socket.recv(&mut buffer) {
+            socket.set_nonblocking(true);
             let mut buffer = buffer[0..len].to_vec();
             let mut buffer = unsafe { std::mem::transmute(buffer) };
             let Some(packet) = Packets::from_bytes(&mut buffer)else{return response::RegisterResponse::Error};

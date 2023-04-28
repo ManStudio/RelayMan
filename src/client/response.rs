@@ -207,19 +207,25 @@ impl ConnectOn {
 
         let _ = conn.send_to(&message, &sock_addr);
 
+        println!("sock: {addr:?}");
+
         loop {
             if time.elapsed().unwrap() > timeout {
                 return Err(ConnectOnError::StageOneFailed);
             }
 
             if let Ok((len, from)) = conn.recv_from(&mut buffer) {
-                if from.as_socket().unwrap() == sock_addr.as_socket().unwrap()
-                    && unsafe { std::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&buffer[0..len]) }
-                        == message
-                {
-                    conn.connect(&sock_addr).unwrap();
-                    println!("First stage succesful!");
-                    break;
+                if let Some(from) = from.as_socket() {
+                    println!("From: {:?}", from);
+                    if from == sock_addr.as_socket().unwrap()
+                        && unsafe {
+                            std::mem::transmute::<&[MaybeUninit<u8>], &[u8]>(&buffer[0..len])
+                        } == message
+                    {
+                        conn.connect(&sock_addr).unwrap();
+                        println!("First stage succesful!");
+                        break;
+                    }
                 }
             }
 
