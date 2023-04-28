@@ -162,18 +162,6 @@ impl std::ops::DerefMut for Conn {
     }
 }
 
-impl Drop for Conn {
-    fn drop(&mut self) {
-        if self.had_upnp {
-            if let Ok(upnp_gateway) = igd::search_gateway(igd::SearchOptions::default()) {
-                if let SocketAddr::V4(_) = self.my_adress {
-                    let _ = upnp_gateway.remove_port(igd::PortMappingProtocol::UDP, self.port);
-                }
-            }
-        }
-    }
-}
-
 impl ConnectOn {
     /// timeout need to be bigger then resend
     pub fn connect(
@@ -219,65 +207,6 @@ impl ConnectOn {
         let _ = conn.set_read_timeout(Some(resend));
         let _ = conn.set_write_timeout(Some(resend));
 
-        'try_to_port_forword: {
-            let mut n = natpmp::Natpmp::new().unwrap();
-            n.send_port_mapping_request(natpmp::Protocol::UDP, self.port, self.port, 30)
-                .unwrap();
-
-            loop {
-                match n.read_response_or_retry() {
-                    Ok(ok) => match ok {
-                        natpmp::Response::UDP(res) => {
-                            println!(
-                                "PMP Open: public: {}, private: {}, lifetime: {:?}",
-                                res.public_port(),
-                                res.private_port(),
-                                res.lifetime()
-                            );
-                            break 'try_to_port_forword;
-                        }
-                        _ => {
-                            println!("PMP Failed: {:?}", ok);
-                            break;
-                        }
-                    },
-                    Err(err) => {
-                        std::thread::sleep(Duration::from_millis(500));
-                        match err {
-                            natpmp::Error::NATPMP_TRYAGAIN => {}
-                            _ => {
-                                println!("PMP Error: {:?}", err);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if let Ok(upnp_gateway) = igd::search_gateway(igd::SearchOptions::default()) {
-                if let SocketAddr::V4(ip) = my_addr {
-                    let res = upnp_gateway.add_port(
-                        igd::PortMappingProtocol::UDP,
-                        self.port,
-                        ip,
-                        30,
-                        "RelayMan",
-                    );
-
-                    match res {
-                        Ok(_) => {
-                            println!("UPNP Open port: {} for: {}", self.port, my_addr);
-                            conn.had_upnp = true;
-                            break 'try_to_port_forword;
-                        }
-                        Err(err) => println!("UPNP Error: {:?}", err),
-                    }
-                }
-            } else {
-                println!("No UPNP gateway");
-            }
-        }
-
         while SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -293,11 +222,13 @@ impl ConnectOn {
         let mut buffer = [MaybeUninit::new(0); 4];
         let message = [1, 4, 21, 6];
 
-        // conn.connect(&sock_addr).unwrap();
-        // conn.send(&message).unwrap();
+        let mut ttl = 2;
+
+        conn.set_ttl(2);
         let _ = conn.send_to(&message, &sock_addr);
 
         loop {
+            conn.set_ttl(2);
             if time.elapsed().unwrap() > timeout {
                 return Err(ConnectOnError::StageOneFailed);
             }
@@ -316,6 +247,7 @@ impl ConnectOn {
             if time_send.elapsed().unwrap() > resend {
                 time_send = SystemTime::now();
                 let _ = conn.send_to(&message, &sock_addr);
+                ttl *= 2;
             }
         }
 
